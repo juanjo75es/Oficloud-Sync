@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+ <head>
+
+ <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+ <title>Oficloud Sync</title>
+ </head>
+ <body>
+     No connection available ... Please wait
+ </body>
+ <script>
+ var t=null;
+
+ function check()
+ {
+     var xmlhttp = new XMLHttpRequest();
+	 var url="https://www.igloovote.com/cloud-v3/checksyncs.php";
+     xmlhttp.onerror=function(oEvent){
+	}
+
+	xmlhttp.onreadystatechange=function() 
+	{
+	   	if (xmlhttp.readyState == 4 ) 
+	   	{
+			   if(xmlhttp.status == 200)
+			   {
+                   location.href='index.html';
+               }
+               else{
+                    if(t!=null)
+                        clearTimeout(t);
+                    t=setTimeout(check,1000)
+               }
+        }
+    }
+    xmlhttp.open("POST", url, true);
+	
+	
+	try
+	{
+		xmlhttp.send();
+	}
+	catch(e)
+	{
+		
+	}
+ }
+ t=setTimeout(check,1000)
+ </script>
+</html>

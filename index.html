@@ -1,0 +1,4064 @@
+<!DOCTYPE html>
+<html>
+ <head>
+
+ <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+ <title>Oficloud Sync</title>
+ <style>
+     body {
+        margin: 0;
+        width: 100%; 
+        height: 100%;
+    }
+
+    #initializing
+    {
+      
+      position:fixed;
+      left:0px;
+      right:0px;
+      top:0px;
+      bottom:0px;
+      background:#fff;
+      z-index:900;
+      color:#007;
+    }
+
+    #initializing-container
+    {
+      position:absolute;
+      top:50%;
+      margin-top:-190px;
+      left:0;
+      width:100%;
+    }
+
+    #initializing-message
+    {
+      width:400px;
+      margin-left:auto;
+      margin-right:auto;
+      height:100px;
+      font-family: 'Source Sans Pro', sans-serif;
+      font-size: 48px;      
+    }
+
+ </style>
+
+ 
+
+ </head>
+ <body>
+
+ <div id="initializing">
+   <div id="initializing-container">
+      <div id="initializing-message">
+        <img src="01.gif" >
+        <span id="initializing-text" style="position:relative; left:50px; top:-20px">Initializing ...</span>
+        </div>
+   </div>
+ </div>
+ 
+ <iframe id="targetFrame" height="100%" width="100%" frameborder="0" src="" 
+    style="position:absolute;border: 0; width: 100%; height: 100%"
+    allow-same-origin
+    allow-scripts
+    allow-top-navigation
+    >Your browser doesn't support iFrames.</iframe>
+ 
+ 
+
+
+ <script>
+    
+
+</script>
+
+<script>
+
+/*function JJSimpleHash () {
+
+    var hash=0;
+
+    this.init = function()
+    {
+        this.hash=0;
+    }
+
+    this.update = function (buffer)
+    {
+        var data=buffer;
+        if (data.length == 0) return this.hash;
+        var hash=this.hash;
+        for (var i = 0; i < data.length; i++) {
+            var char = data[i];//data.charCodeAt(i);
+            hash = ((hash<<5)-hash)+char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        this.hash=hash;
+        return hash;
+    }
+
+    this.digest = function()
+    {
+        return this.hash;
+    }
+
+}*/
+
+var g_server_url="https://storage.cloudspace.com.my/client/";
+
+var pjson = require('./package.json');
+
+var plugins=require("./new_post_plugins.js");
+
+var os = require('os');
+console.log("OS: "+os.platform() +" "+ os.release()); //'10.8.0'
+
+const fs = require('fs');
+const crypto = require('crypto');
+const hidefile = require('hidefile');
+const junk = require('junk');
+const mime = require('mime');
+const fspath = require('path');
+var exec = require('child_process').exec;
+if (process.platform == 'win32') {  
+  var regedit = require('regedit')
+  var winattr = require('winattr');
+}
+var AutoLaunch = require('auto-launch');
+
+const {remote} = require('electron');
+const app=remote.app;
+const {Menu, MenuItem, Tray} = remote;
+
+var win = remote.getCurrentWindow();
+
+const nativeImage = require('electron').nativeImage;
+var balloon_image = nativeImage.createFromPath(imageFolder + '/64x64.png');
+
+
+var miAutoLauncher = new AutoLaunch({
+    name: 'Oficloud',
+    path: app.getAppPath(),
+});
+
+
+/*process.on('uncaughtException', function (err) {
+  console.log(err);
+})*/
+
+function poner_initializing(message)
+{
+  document.getElementById("initializing-text").innerHTML=message;
+  document.getElementById("initializing").style.display="block";
+}
+
+function quitar_initializing()
+{
+
+  if(document.getElementById('targetFrame').contentWindow.panel_mostrar)
+    document.getElementById('targetFrame').contentWindow.panel_mostrar('item3');
+  else
+    setTimeout("document.getElementById('targetFrame').contentWindow.panel_mostrar('item3');",500);
+  document.getElementById("initializing").style.display="none";
+
+  /*win.on('resize', function () {
+      document.getElementById('targetFrame').contentWindow.igualar_tablas();
+  });*/
+  window.onresize = function(event) {
+    if(document.getElementById('targetFrame').contentWindow.igualar_tablas)
+      document.getElementById('targetFrame').contentWindow.igualar_tablas();
+  }
+  if(document.getElementById('targetFrame').contentWindow.igualar_tablas)
+      document.getElementById('targetFrame').contentWindow.igualar_tablas();
+
+}
+
+
+var bal=(localStorage.getItem("launch_on_startup")==="true");
+if(localStorage.getItem("launch_on_startup")===false)
+  bal=true;
+
+const template = [
+  {
+    label: 'Application',
+    submenu: [
+      {
+        label: 'Launch on startup',
+        type: 'checkbox',
+        checked: bal,
+        click(item, focusedWindow,event) {
+            set_launch_on_startup(item.checked);
+        }
+      },
+      {
+        label: 'Open Administration Panel',
+        click(item, focusedWindow) {
+          require('electron').shell.openExternal(g_server_url+'/login');
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Restart app',
+        accelerator: 'CmdOrCtrl+R',
+        click(item, focusedWindow) {
+          if (focusedWindow) focusedWindow.reload();
+        }
+      },
+      {
+        label: 'Login to another account',
+        click(item,focusedWindow) {
+          document.getElementById("targetFrame").src=g_server_url+"login?sync=1";
+          quitar_initializing();
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Report a problem',
+        click(item,focusedWindow) {
+          require('electron').shell.openExternal('http://www.oficloud.com/bugtrack');
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Quit', click: function (){
+          remote.getGlobal('sharedObj').forceClose = true;
+          win.close();
+        }
+      }
+    ]
+  },
+  {
+    label: 'View',
+    submenu: [
+      {
+        role: 'togglefullscreen'
+      },
+      {
+        label: 'Toggle Developer Tools',
+        accelerator: process.platform === 'darwin' ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+        click(item, focusedWindow) {
+          if (focusedWindow)
+            focusedWindow.webContents.toggleDevTools();
+        }
+      },
+    ]
+  },
+  {
+    role: 'help',
+    submenu: [
+      {
+        label: 'Learn More',
+        click() { require('electron').shell.openExternal('http://www.oficloud.com'); }
+      }
+      /*,
+      {
+        label: 'Test upload',
+        click() { subir_fichero('C:/Users/juanjo/Pictures/yo_bw.jpg',4); }
+      },
+      {
+        label: 'Test download',
+        click() { bajar_fichero('C:/Users/juanjo/Pictures/logo oficloud.pdf',4,2,'logo oficloud.pdf',130597,'application/pdf'); }
+      },
+      {
+        label: 'Test new dir',
+        click() { crear_directorio('prueba',42); }
+      },
+      {
+        label: 'Test delete file',
+        click() { borrar_fichero('yo_bw.jpg',4); }
+      },
+      
+      {
+        label: 'Test balloon',
+        click() { appIcon.displayBalloon({
+                    title:'hello',
+                    content:'world'
+                    }); 
+                  }
+      },*/
+    ]
+  },
+];
+
+const templateDarwin = [
+  {
+    label: 'Application',
+    submenu: [
+      /*{
+        role: 'about'
+      },*/
+      {
+        label: 'Launch on startup',
+        type: 'checkbox',
+        checked: bal,
+        click(item, focusedWindow,event) {
+            set_launch_on_startup(item.checked);
+        }
+      },
+      {
+        label: 'Open Administration Panel',
+        click(item, focusedWindow) {
+          require('electron').shell.openExternal(g_server_url+'login');
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Restart app',
+        accelerator: 'CmdOrCtrl+R',
+        click(item, focusedWindow) {
+          if (focusedWindow) focusedWindow.reload();
+        }
+      },
+      {
+        label: 'Login to another account',
+        click(item,focusedWindow) {
+          document.getElementById("targetFrame").src=g_server_url+"login?sync=1";
+          quitar_initializing();
+        }
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Report a problem',
+        click(item,focusedWindow) {
+         require('electron').shell.openExternal('http://www.oficloud.com/bugtrack');
+        }
+      },      
+    ]
+  },
+  {
+    label: 'View',
+    submenu: [
+      {
+        role: 'togglefullscreen'
+      },
+      {
+        label: 'Toggle Developer Tools',
+        accelerator: process.platform === 'darwin' ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+        click(item, focusedWindow) {
+          if (focusedWindow)
+            focusedWindow.webContents.toggleDevTools();
+        }
+      },
+    ]
+  },
+  {
+    role: 'help',
+    submenu: [
+      {
+        label: 'Learn More',
+        click() { require('electron').shell.openExternal('http://www.oficloud.com'); }
+      }
+    ]
+  },
+];
+
+/*if (process.platform === 'darwin') {
+  const name = require('electron').remote.app.getName();
+  template.unshift({
+    label: name,
+    submenu: [
+      {
+        type: 'separator'
+      },
+      {
+        role: 'services',
+        submenu: []
+      },
+      {
+        type: 'separator'
+      },
+      {
+        role: 'hide'
+      },
+      {
+        role: 'hideothers'
+      },
+      {
+        role: 'unhide'
+      },
+      {
+        type: 'separator'
+      },
+      {
+        label: 'Quit', click: function (){
+          remote.getGlobal('sharedObj').forceClose = true;
+          win.close();
+        }
+      }
+    ]
+  });
+  // Window menu.
+  template[3].submenu = [
+    {
+      label: 'Close',
+      accelerator: 'CmdOrCtrl+W',
+      role: 'close'
+    },
+    {
+      label: 'Minimize',
+      accelerator: 'CmdOrCtrl+M',
+      role: 'minimize'
+    },
+    {
+      label: 'Zoom',
+      role: 'zoom'
+    },
+    {
+      type: 'separator'
+    },
+    {
+      label: 'Bring All to Front',
+      role: 'front'
+    }
+  ];
+}*/
+
+String.prototype.replaceAll = function(search, replacement) {
+    var target = this;
+    return target.split(search).join(replacement);
+};
+
+var appIcon;
+//if (process.platform !== 'darwin') 
+{
+
+  var imageFolder = __dirname ;
+  if (process.platform == 'win32') {  
+    trayImage = imageFolder + '\\16x16 - 1.png';
+  }
+  //if (process.platform == 'darwin') 
+  else
+  {  
+    trayImage = imageFolder + '/16x16 - 1.png';
+  }
+  appIcon = new Tray(trayImage)
+  if (process.platform === "darwin") {  
+    appIcon.setPressedImage(imageFolder + '/16x16 - 1.png');
+  }
+
+  imageFolder=imageFolder.replaceAll("\\","/");
+  
+var contextMenu;
+if (process.platform !== "darwin") 
+{
+  contextMenu = Menu.buildFromTemplate([
+    {label: 'Show', click: function (){
+      win.show();
+    }},
+    {label: 'Hide', click: function (){
+      win.hide();
+    }},
+    {type: 'separator'},
+    {label: 'Quit', click: function (){
+      remote.getGlobal('sharedObj').forceClose = true;
+      win.close();
+    }}
+  ]);
+}
+else
+{
+  contextMenu = Menu.buildFromTemplate([
+    {label: 'Show', click: function (){
+      win.show();
+      app.dock.show();
+    }},
+    {label: 'Hide', click: function (){
+      win.hide();
+      app.dock.hide();
+    }}
+  ]);
+}
+
+}
+appIcon.setToolTip('Oficloud Sync agent.')
+
+
+// Call this again for Linux because we modified the context menu
+  
+appIcon.setContextMenu(contextMenu);
+  
+ 
+
+win.webContents.session.clearCache(function(){
+//some callback.
+});
+
+
+
+
+var menu;
+if (process.platform !== 'darwin')   
+  menu = Menu.buildFromTemplate(template);
+else
+  menu = Menu.buildFromTemplate(templateDarwin);
+
+
+Menu.setApplicationMenu(menu);    
+
+const CHUNK_SIZE0=32000;
+const CHUNK_SIZE=1000000;
+
+var syncs=[];
+
+
+//console.log("args:"+remote.getGlobal('sharedObj').params);
+
+function set_launch_on_startup(b)
+{
+  console.log("set_launch_on_startup:"+b);
+  var path=app.getAppPath();
+  localStorage.setItem("launch_on_startup", b);
+  if(b)
+    miAutoLauncher.enable();
+  else
+    miAutoLauncher.disable();
+}
+
+function no_connection()
+{
+  //location.href='connecting.html';
+  poner_initializing("Connecting ...");
+  setAppState("desconectado");
+
+  var t=null;
+
+  function check()
+ {
+     var xmlhttp = new XMLHttpRequest();
+	 var url=g_server_url+"checksyncs.php";
+     xmlhttp.onerror=function(oEvent){
+	}
+
+	xmlhttp.onreadystatechange=function() 
+	{
+	   	if (xmlhttp.readyState == 4 ) 
+	   	{
+			   if(xmlhttp.status == 200)
+			   {
+              function rel()
+              {
+               setTimeout(rel,2000);
+               location.reload()
+              }
+              setTimeout(rel,2000);
+         }
+         else{
+                    if(t!=null)
+                        clearTimeout(t);
+                    t=setTimeout(check,1000)
+         }
+        }
+  }
+  xmlhttp.open("POST", url, true);
+	
+	
+	try
+	{
+		xmlhttp.send();
+	}
+	catch(e)
+	{
+		
+	}
+ }
+ t=setTimeout(check,1000)
+
+}
+
+var g_user;
+function hacer_login()
+{
+  g_user=localStorage.getItem("user");
+  if(g_user)
+  {
+    var password=localStorage.getItem("password"); 
+    try
+    {
+      var pjson = require('./package.json');    
+      var sversion = pjson.version;
+      document.getElementById("targetFrame").src=g_server_url+"login?sync=1&puser="+encodeURIComponent(g_user)+"&ppassword="+encodeURIComponent(password)+"&version="+sversion+"&cid="+g_client_id;
+    }
+    catch(e)
+    {
+      no_connection();
+    }
+  }
+  else{  
+    try
+    {
+      document.getElementById("targetFrame").src=g_server_url+"login?sync=1";
+    }
+    catch(e)
+    {
+      no_connection();
+    }
+    quitar_initializing();
+    //appIcon.setImage(imageFolder + '/tool.png'); //poner icono de desconectado
+    setAppState("desconectado");
+  }
+}
+
+
+function es_nueva_instalacion(freturn)
+{
+  if (process.platform !== 'win32') {  
+    freturn(false);
+    return;
+  }
+  regedit.list('HKCU\\SOFTWARE\\Oficloud', function(err, result) {
+    if(err)
+    {
+      freturn(false);
+      return;
+    }
+    if(result['HKCU\\SOFTWARE\\Oficloud'].values['newinstall'].value==1)
+    {
+      var valuesToPut = {
+        'HKCU\\Software\\Oficloud': {
+          'newinstall': {
+            value: 0,
+            type: 'REG_DWORD'
+          }
+        }
+      }
+
+      regedit.putValue(valuesToPut, function(err) {
+        freturn(true);
+      })
+      
+    }
+    else{
+      freturn(false);
+    }
+  })
+}
+
+function clear_local_storage()
+{
+  for (i=0; i<=localStorage.length-1; i++)  
+  {  
+        key = localStorage.key(i);  
+        localStorage.removeItem(key);
+        i--;
+  }
+}
+
+
+es_nueva_instalacion(function(bes){
+  
+  if(bes)
+  {
+    clear_local_storage();
+    set_launch_on_startup(true);
+  }
+  hacer_login();
+  window.addEventListener("message", receiveMessage, false);
+  load_syncs_from_storage(g_user);
+})
+
+
+
+
+/*function make_tree(afiles)
+{
+  var min=999999999;
+  afiles.forEach(function(file) {
+
+  }  
+}*/
+
+function check_remote_operations(remote_operations,obj,res)
+{
+  var bres=false;
+  switch(obj.typecode)
+  {
+    case "newdir":
+    case "delete_dir":
+      remote_operations.forEach(function(op){
+        var jsparams=JSON.parse(op.params);
+        if(op.tipo==obj.typecode && ((jsparams.name==obj.auxname && op.directory==obj.auxid) ||
+            ("*"==obj.auxname && op.directory==obj.auxid) ))
+        {
+          bres=true;
+          if(typeof res !== "undefined")
+            res.params=jsparams;
+          return bres;
+        }
+      });
+      return bres;
+      break;
+    case "dir_rename":
+      remote_operations.forEach(function(op){
+        var jsparams=JSON.parse(op.params);
+        if(op.tipo==obj.typecode && (jsparams.id==obj.id || op.directorio==obj.id && jsparams.name==obj.name))
+        {
+          bres=true;
+          if(typeof res !== "undefined")
+            res.params=jsparams;
+          return bres;
+        }
+      });
+      return bres;
+      break;
+    case "file_rename":
+      remote_operations.forEach(function(op){
+        var jsparams=JSON.parse(op.params);
+        if(op.tipo==obj.typecode && jsparams.id==obj.id && jsparams.newname==obj.newname)
+        {
+          bres=true;
+          if(typeof res !== "undefined")
+            res.params=jsparams;
+          return bres;
+        }
+      });
+      return bres;
+      break;
+    case "movedir":    
+      remote_operations.forEach(function(op){
+        var jsparams=JSON.parse(op.params);
+        if(op.tipo==obj.typecode && jsparams.name==obj.name && jsparams.dir==obj.dir)
+        {
+          bres=true;
+          if(typeof res !== "undefined")
+            res.params=jsparams;
+          return bres;
+        }
+      });
+      return bres;
+      break;
+    case "movefile":
+      remote_operations.forEach(function(op){
+        var jsparams=JSON.parse(op.params);
+        if(op.tipo==obj.typecode && jsparams.name==obj.name && (jsparams.newdir==obj.newdir || jsparams.dir==obj.dir || "*"==obj.dir))
+        {
+          bres=true;
+          if(typeof res !== "undefined")
+            res.params=jsparams;
+          return bres;
+        }
+      });
+      return bres;
+      break;
+    case "upload":
+    case "delete_file":
+      remote_operations.forEach(function(op){
+        var jsparams=JSON.parse(op.params);
+        if(op.tipo==obj.typecode && ((jsparams.name==obj.auxname && op.directory==obj.auxid) || (jsparams.name==obj.auxname && "*"==obj.auxid)))
+        {
+          bres=true;
+          if(typeof res !== "undefined")
+            res.params=jsparams;
+          return bres;
+        }
+      });
+      return bres;
+      break;
+  }
+}
+
+var g_next_operation_id=0;
+function push_operation(operations,obj)
+{
+  obj.opid=g_next_operation_id;
+  operations.push(obj);
+  g_next_operation_id++;
+
+  return g_next_operation_id-1;
+}
+
+function recorrido_local(sync_folder,path,remotedir_id,localdir_id,localdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+  dirmatch_table_remote)
+{
+  operation=operations || [];
+  localdirs.forEach(function(localdir){
+    //if(localdir.name.charAt(0)!='.')
+    {
+      var filtered = remotedirs.filter(function(entry) { return entry.name === localdir.name; });
+      if(filtered.length>0)
+      {
+        var item = filtered[0];
+        item.local_id=localdir.id;
+        recorrido_local(sync_folder,path,item.id,localdir.id,localdir.subdirs,item.subdirs,remote_operations,operations,dirmatch_table_local,
+          dirmatch_table_remote);
+      }
+      else{
+        //directorio no existe en remoto
+        //!!hay que mirar primero si se ha borrado en remoto y si es antes de ultima actualizacion -> para decidir que hacer
+        var remop={};
+        if(!check_remote_operations(remote_operations,{"typecode":"delete_dir","auxname":localdir.name,"auxid":remotedir_id},remop))
+        {
+          //no ha sido borrado en remoto
+          if(check_remote_operations(remote_operations,{"typecode":"dir_rename","name":localdir.name,"dir":remotedir_id}))
+          {
+            //ha sido renombrado en remoto, por lo tanto no hacemos nada aqui y recorrido_remoto y alo detectara
+            push_operation(operations,{"sync_folder":sync_folder,"type":"noop"});
+          }
+          else if(check_remote_operations(remote_operations,{"typecode":"movedir","name":localdir.name,"dir":remotedir_id}))
+            push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"deletedir","id":localdir.id,"path":localdir.path,"parent":localdir_id,"name":localdir.name});
+          else
+          {
+            push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"createdir","name":localdir.name,"parent":remotedir_id,"localid":localdir.id});
+          }
+          recorrido_local(sync_folder,path,-1,localdir.id,localdir.subdirs,[],remote_operations,operations,dirmatch_table_local,
+            dirmatch_table_remote);
+        }
+        else
+        {
+          push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"deletedir","id":localdir.id,"path":localdir.path,"parent":localdir_id,"name":localdir.name});
+          dirmatch_table_local[localdir.id]=remop.params.id;
+          dirmatch_table_remote[remop.params.id]=localdir.id;
+          recorrido_local(sync_folder,path,remop.params.id,localdir.id,localdir.subdirs,[],remote_operations,operations,dirmatch_table_local,
+            dirmatch_table_remote);
+        }
+      
+      }
+    }
+  });
+}
+
+var g_remotedir_path_table=[];
+function recorrido_remoto(sync_folder,path,remotepath,remotedir_id,localdir_id,localdirs,remotedirs,remote_operations,operations,dirmatch_table_local
+  ,dirmatch_table_remote)
+{
+  
+  operation=operations || [];
+  remotedirs.forEach(function(remotedir){
+    g_remotedir_path_table[remotedir.id]=remotepath+"/"+remotedir.name;    
+    var filtered = localdirs.filter(function(entry) { return entry.name === remotedir.name; });
+    if(filtered.length>0)
+    {
+      var item = filtered[0];
+      item.remote_id=remotedir.id;
+      dirmatch_table_local[item.id]=remotedir.id;
+      dirmatch_table_remote[remotedir.id]=item.id;
+      recorrido_remoto(sync_folder,item.path,remotepath+"/"+remotedir.name,remotedir.id,item.id,item.subdirs,remotedir.subdirs,remote_operations,operations,dirmatch_table_local
+        ,dirmatch_table_remote);
+    }
+    else{      
+      if(!check_remote_operations(remote_operations,{"typecode":"newdir","auxname":remotedir.name,"auxid":remotedir_id}))
+      {
+            let rop={};
+            if(check_remote_operations(remote_operations,{"typecode":"dir_rename","newname":remotedir.name,"id":remotedir.id},rop))
+            {              
+              var path1=path+"/"+rop.params.name;
+              var path2=path+"/"+remotedir.name;
+              push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"renamedir","id":remotedir.id,
+                  "path":path1,"newpath":path2});
+            }
+            else if(check_remote_operations(remote_operations,{"typecode":"movedir","name":remotedir.name,"dir":remotedir_id}))
+              push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"createdir","name":remotedir.name,"path":path,"parent":localdir_id});
+            else
+             push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"deletedir","id":remotedir.id,"name":remotedir.name,"parent":remotedir_id});
+      }       
+      else
+      {
+        var newpath=path
+        push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"createdir","name":remotedir.name,"path":path,"parent":localdir_id});
+      }
+      recorrido_remoto(sync_folder,path+"/"+remotedir.name,remotepath+"/"+remotedir.name,remotedir.id,-1,[],remotedir.subdirs,remote_operations,operations,dirmatch_table_local,dirmatch_table_remote);
+    }
+  });
+}
+
+function actualizar_local_con_peticiones_pendientes(sync_folder,localrootpath,localfiles,localdirs,transactions_queue)
+{
+  //localfiles->dir,hash,mtime,name,path,size,type
+  
+  for(var i=0;i<transactions_queue.length;i++)
+  {
+    var t=transactions_queue[i]; //dir,fileid,filename,filesize,filetype,op,trid
+    if(t.op=="download")
+    {
+      let localdir=get_local_path_from_remote_id(localrootpath,t.dir);
+      if(fs.existsSync(localdir))
+      {
+        let path=localdir+"/"+t.filename;
+        let remotedir=t.dir;//dir_get_remote_id(dirmatch_table_local,t.dir);
+        var newfile={origin:"pending_transactions",dir:t.dir,name:t.filename,path:path,size:t.filesize,type:"file",remote_dir_id:remotedir};
+        localfiles.push(newfile);
+      }
+      else{
+        var newfile={origin:"pending_transactions",dir:t.dir,name:t.filename,path:path,size:t.filesize,type:"file",remote_dir_id:remotedir};
+        eliminar_operacion_persistente(sync_folder,newfile);
+      }
+    }
+  }
+
+    for (i=0; i<=localStorage.length-1; i++)  
+    {  
+        key = localStorage.key(i);  
+        if(key.substr(0,9)=="download_")
+        {
+          var op=JSON.parse(localStorage.getItem(key));
+          /*ops.push(op);*/
+          var localrootpath=get_sync_path(sync_folder);
+          //let path=get_local_path_from_remote_id(localrootpath,op.dir)+"/"+op.name;          
+          /*var newfile={origin:"pending_transactions",id:op.id,dir:op.dir,name:op.name,size:op.size,type:op.type};
+          remotefiles.push(newfile);*/
+          var newfile={origin:"pending_transactions",dir:op.dir,name:op.name,size:op.size,type:op.type,remote_dir_id:op.dir};
+          localfiles.push(newfile);
+        }
+    }  
+
+  return [localfiles,localdirs];
+}
+
+function actualizar_remoto_con_peticiones_pendientes(sync_folder,remotefiles,remotedirs,transactions_queue)
+{
+  return [remotefiles,remotedirs];
+}
+
+function guardar_operacion_persistente(sync_folder,op)
+{
+  var sop=JSON.stringify(op);
+  localStorage.setItem("download_"+op.dir+op.name, sop);
+}
+
+function eliminar_operacion_persistente(sync_folder,op)
+{
+  var sop=JSON.stringify(op);
+  localStorage.removeItem("download_"+op.dir+op.name);
+}
+
+function actualizar_operacion_persistente(sync_folder,op,code)
+{
+    if(code=="INC_FAILS")
+    {
+      if(op.nfails)
+        op.nfails++;
+      else
+        op.nfails=1;
+      var sop=JSON.stringify(op);
+      localStorage.setItem("download_"+op.dir+op.name, sop);
+    }
+}
+
+function obtener_operaciones_persistentes(sync_folder)
+{
+    var ops=[];
+    for (i=0; i<=localStorage.length-1; i++)  
+    {  
+        key = localStorage.key(i);  
+        if(key.substr(0,9)=="download_")
+        {
+          var op=JSON.parse(localStorage.getItem(key));
+          ops.push(op);
+        }
+    }  
+    return ops;
+}
+
+function add_sync(user,dir,folder)
+{
+          localStorage.removeItem("sync_"+dir+"_"+user);
+          localStorage.removeItem("last_update_date"+dir+"_"+user);
+          localStorage.setItem("sync_"+dir+"_"+user, JSON.stringify({"user":user,"dir":dir, "path":folder}));
+
+          parar_y_recargar_syncs(function(){
+
+            document.getElementById('targetFrame').contentWindow.set_syncs(syncs);
+            document.getElementById('targetFrame').contentWindow.refresh_directory();
+            document.getElementById('targetFrame').contentWindow.tip("The directory has been successfully added to sync.",3,2500,"success");
+            setTimeout("check_sync_remote()",1000);
+          });
+
+          /*syncs.push({"dir":dir,"path":folder});
+          watch(dir,folder);*/
+          g_previous_filelist[dir]=[];
+          g_no_activity[dir]=true;
+          g_timeout_prestart[dir]=null;
+
+
+          prestart_sync(dir);
+
+}
+
+
+
+function SetWindowsFolderInWindows10Explorer(folder,regprefix)
+{
+      var version=os.release().split(".");
+      //si es windows 10
+      if(os.platform()=="win32" && (parseInt(version[0])>6 || (parseInt(version[0])==6 && parseInt(version[1])>=4) ))
+      //if(os.platform()=="win32" )
+      {
+        var regedit = require('regedit');
+        var user=localStorage.getItem("user");
+
+        execute("wmic useraccount where name='%username%' get sid", function(sid_output){
+          var a=sid_output.split('\n');
+          var sid=a[1];
+          sid=sid.replaceAll("\n","");
+          sid=sid.replaceAll("\r","");
+          sid=sid.replaceAll("\t","");
+          sid=sid.replaceAll(" ","");
+          //console.log("sid: "+sid);
+          var s='HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager\\Oficloud!'+sid+'!personal';
+          regedit.createKey([s], function(err) {
+            
+            if(typeof err === "undefined")
+            {
+              var basepath = app.getAppPath();
+              var iconpath=basepath+"\\icon.ico";
+              
+              let valuesToPut = {};
+              valuesToPut[s] = {
+                    'DisplayNameResource': {
+                        value: 'Oficloud',
+                        type: 'REG_SZ'
+                    },
+                    'IconResource': {
+                        value: iconpath,
+                        type: 'REG_SZ'
+                    }
+              }
+              
+              regedit.putValue(valuesToPut, function(err) {
+                if(typeof err !== "undefined")
+                  console.log(err);
+                else{
+                      var s2='HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager\\Oficloud!'+sid+'!personal\\UserSyncRoots';
+                      regedit.createKey([s2], function(err) {
+
+                        let valuesToPut = {};
+
+                        var json={};
+                        var folder2=folder.replaceAll("/","\\");
+                        json[sid]={
+                                  value: folder2,
+                                  type: 'REG_SZ'
+                              };
+
+                        valuesToPut[s2] = json;
+                        //ESTO ESTA SUBIDO-> actualizar en supertower y probar
+
+                        regedit.putValue(valuesToPut, function(err) {
+                          if(typeof err !== "undefined")
+                            console.log(err);
+                          else{
+                            //91221D5C-169C-4AC2-9226-23FD9DB84310
+                            var s2=regprefix;
+                            regedit.createKey([s2], function(err) {
+
+                              let valuesToPut = {};
+                              valuesToPut[s2] = {
+                                'predeterminado': {
+                                  value: "Oficloud",
+                                  type: 'REG_DEFAULT'
+                                },
+                                'System.IsPinnedToNamespaceTree':{
+                                  value: 0x1,
+                                  type: 'REG_DWORD'
+                                },
+                                'SortOrderIndex':{
+                                  value: 0x42,
+                                  type: 'REG_DWORD'
+                                }
+                              };
+
+                              regedit.putValue(valuesToPut, function(err) {
+                                if(typeof err !== "undefined")
+                                  console.log(err);
+                                else{
+                                      var s2=regprefix+'\\DefaultIcon';
+                                      regedit.createKey([s2], function(err) {
+
+                                        let valuesToPut = {};
+                                        valuesToPut[s2] = {
+                                          'predeterminado': {
+                                            value: iconpath,
+                                            type: 'REG_DEFAULT'
+                                          }
+                                        };
+
+                                        regedit.putValue(valuesToPut, function(err) {
+                                          if(typeof err !== "undefined")
+                                            console.log(err);
+                                          else{
+                                            var s2=regprefix+'\\Instance';
+                                            regedit.createKey([s2], function(err) {
+
+                                              let valuesToPut = {};
+                                              valuesToPut[s2] = {
+                                                'CLSID': {
+                                                  value: '{0E5AAE11-A475-4c5b-AB00-C66DE400274E}',
+                                                  type: 'REG_SZ'
+                                                }
+                                              };
+
+                                              regedit.putValue(valuesToPut, function(err) {
+                                                if(typeof err !== "undefined")
+                                                  console.log(err);
+                                                else{
+                                                  var s2=regprefix+'\\InProcServer32';
+                                                  regedit.createKey([s2], function(err) {
+
+                                                    let valuesToPut = {};
+                                                    valuesToPut[s2] = {
+                                                      'CLSID': {
+                                                        value: '%SYSTEMROOT%\\system32\\shell32.dll',
+                                                        type: 'REG_DEFAULT'
+                                                      }
+                                                    };
+
+                                                    regedit.putValue(valuesToPut, function(err) {
+                                                      if(typeof err !== "undefined")
+                                                        console.log(err);
+                                                      else{
+                                                        let s2=regprefix+'\\Instance\\InitPropertyBag';
+                                                        regedit.createKey([s2], function(err) {
+
+                                                          let valuesToPut = {};
+                                                          valuesToPut[s2] = {
+                                                            'TargetFolderPath': {
+                                                              value: folder2,
+                                                              type: 'REG_SZ'
+                                                            },
+                                                            'Attributes': {
+                                                              value: 17,
+                                                              type: 'REG_DWORD'
+                                                            }
+                                                          };
+
+                                                          regedit.putValue(valuesToPut, function(err) {
+                                                            if(typeof err !== "undefined")
+                                                              console.log(err);
+                                                            else{
+                                                              
+                                                            }
+                                                          })
+
+                                                        });
+
+                                                        let s3=regprefix+'\\ShellFolder';
+                                                        regedit.createKey([s3], function(err) {
+
+                                                          let valuesToPut = {};
+                                                          valuesToPut[s3] = {
+                                                            'FolderValueFlags': {
+                                                              value: 0x28,
+                                                              type: 'REG_DWORD'
+                                                            }
+                                                          };
+                                                          //value: 0xf080004d,
+
+                                                          regedit.putValue(valuesToPut, function(err) {
+                                                            if(typeof err !== "undefined")
+                                                              console.log(err);
+                                                            else{
+                                                              
+                                                            }
+                                                          })
+
+                                                        });
+
+                                                        
+                                                        execute("reg add "+s3+" /v Attributes /t REG_DWORD /d 0xF080004D /f", function(sid_output) {
+
+                                                        });
+
+                                                        let s4='HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace\\{91221D5C-169C-4AC2-9226-23FD9DB84310}';
+                                                        regedit.createKey([s4], function(err) {
+
+                                                          let valuesToPut = {};
+                                                          valuesToPut[s4] = {
+                                                            'def': {
+                                                              value: 'Oficloud',
+                                                              type: 'REG_DEFAULT'
+                                                            }
+                                                          };
+
+                                                          regedit.putValue(valuesToPut, function(err) {
+                                                            if(typeof err !== "undefined")
+                                                              console.log(err);
+                                                            else{
+                                                              
+                                                            }
+                                                          })
+
+                                                        });
+
+                                                        let s5='HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel';
+                                                        regedit.createKey([s5], function(err) {
+
+                                                          let valuesToPut = {};
+                                                          valuesToPut[s5] = {
+                                                            '{91221D5C-169C-4AC2-9226-23FD9DB84310}': {
+                                                              value: 0x1,
+                                                              type: 'REG_DWORD'
+                                                            }
+                                                          };
+
+                                                          regedit.putValue(valuesToPut, function(err) {
+                                                            if(typeof err !== "undefined")
+                                                              console.log(err);
+                                                            else{
+                                                              
+                                                            }
+                                                          })
+
+                                                        });
+                                                        
+                                                      }
+                                                    })
+
+                                                  });
+                                                  
+                                                }
+                                              })
+
+                                            });
+                                  
+                                          }
+                                        })
+
+                                      });
+                                }
+                              })
+
+                            });
+                          }
+                        })
+
+                    });
+
+                }
+              })
+
+            }
+            else if(err.message=="access is denied")
+            {
+              //should restart as administrator
+              console.log("access denied 1139");
+            }
+            else
+              console.log(err);
+          });
+        });
+      }
+  
+}
+
+function parar_y_recargar_syncs(ondone)
+{
+          g_parar_sync=true;
+          g_f_parar_sync=function ()
+          {
+            //inicializar syncs
+            load_syncs_from_storage(g_user);
+            g_last_update_date=[];
+            for(var i=0;i<syncs.length;i++)
+            {
+              g_last_update_date[syncs[i].dir]=localStorage.getItem("last_update_date"+syncs[i].dir+"_"+g_user);
+              watch(syncs[i].dir,syncs[i].path);
+              g_previous_filelist[syncs[i].dir]=[];
+              g_no_activity[syncs[i].dir]=true;
+              g_timeout_prestart[syncs[i].dir]=null;
+            }
+            ondone();
+          }
+}
+
+
+var dirmatch_table_local=[];
+var dirmatch_table_remote=[];
+
+var g_parar_sync=false;
+var g_f_parar_sync=null;
+var g_es_instalacion=false;
+
+var g_b_sync_again=[];
+
+var g_login=false;
+
+function receiveMessage(event)
+{
+  var origin = event.origin || event.originalEvent.origin; // For Chrome, the origin property is in the event.originalEvent object.
+  if (origin !== "https://storage.cloudspace.com.my")
+    return;
+  var data=event.data;
+  //console.log(JSON.stringify(data));
+  //***************************************************************************************************
+  //***************************************************************************************************
+  //***************************************************************************************************
+  if(data.id=="checksyncsresult")
+  {
+    var b_run_check=false;
+    if(syncs.length==0)
+    {
+      
+      setAppState("actualizado");
+    }
+    for(var i=0;i<syncs.length;i++)
+    {
+      if(g_b_sync_again[syncs[i].dir])
+      {
+        g_b_sync_again[syncs[i].dir]=false;
+        prestart_sync(syncs[i].dir);
+        b_run_check=true;
+      }
+    }
+    if(typeof data.status === "undefined")
+    {
+      g_last_check_date=data.date;
+      for(var i=0;i<data.modifs.length;i++)
+      {
+        //console.log("modif:"+data.modifs[i].dir);
+        prestart_sync(data.modifs[i].dir);
+      }
+      //setTimeout(function () {run_syncs(function (){console.log("run_syncs end")});},3000);
+      //esto esta mal-> si hay varios sync se pone la variable a false cuando acaba el primero
+      if(data.modifs.length==0 && !b_run_check)
+      {
+        g_running_check=false;
+      }
+    }
+    else
+    {
+      if(data.status=="Connection failed")
+      {
+        poner_initializing("Initializing ...");
+        no_connection();
+      }
+    }
+  }
+  //***************************************************************************************************
+  //***************************************************************************************************
+  //***************************************************************************************************
+  else if(data.id=="remote_sync_result")
+  {
+    var path=get_sync_path(data.dir);
+    path=path.replaceAll("\\","/");
+    var transaction_queue=data.transaction_queue;
+
+    //ejecutar_descargas_pendientes(data.dir);
+    /*var ops=obtener_operaciones_persistentes(data.dir);
+    do_run_operations(data.dir,ops);*/
+    
+    
+
+    check_syncs_local(path,data.dir,function (localfiles,localdirs){
+        var operations=[];
+        var remote_operations=data.ops;
+
+       /* //quitar de remote_operations las que hemos ejecutado nosotros
+        //no se si esto es conveniente una vez añada control de operaciones pendientes
+        var new_remote_operations=[];
+        for(i=0;i<remote_operations.length;i++)
+        {
+          if(!es_nuestra_operacion(remote_operations[i],g_previously_run_operations))
+          {
+            new_remote_operations.push(remote_operations[i]);
+          }
+        }
+        remote_operations=new_remote_operations;
+        */
+
+
+        clear_pending_transactions(data.dir);
+        
+        
+        
+        //recorrido de ficheros en local
+        //!!incluir ficheros que están siendo descargados
+        //!!excluir ficheros que están en cola para ser borrados? (creo que los borra al instante)
+        [localfiles,localdirs]=actualizar_local_con_peticiones_pendientes(data.dir,path,localfiles,localdirs,transaction_queue);
+
+        //recorrido de ficheros en remoto
+        //!!incluir ficheros que están siendo subidos
+        //!!excluir ficheros que están en cola para ser borrados en remoto
+        //!!modificar ficheros que están en cola para ser movidos o renombrados en remoto
+        [remotefiles,remotedirs]=actualizar_remoto_con_peticiones_pendientes(data.dir,data.files,data.dirs,transaction_queue);
+
+
+        dirmatch_table_local=[];
+        dirmatch_table_remote=[];
+        dirmatch_table_local[localdirs.id]=data.dir;
+        dirmatch_table_remote[data.dir]=localdirs.id;
+        recorrido_local(data.dir,path,data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+            dirmatch_table_remote);
+        g_remotedir_path_table[data.dir]="";
+        recorrido_remoto(data.dir,path,"",data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+            dirmatch_table_remote);
+
+        //console.log("remote dirs:"+JSON.stringify(remotedirs));
+        //console.log("remote files:"+JSON.stringify(data.files));
+        //console.log("local dirs:"+JSON.stringify(localdirs));
+        //console.log("local files:"+JSON.stringify(localfiles));
+        //console.log("remote operations:"+JSON.stringify(remote_operations));
+
+        quitar_initializing();//quitar el cartel inicial que tapa todo
+        
+
+        localfiles.forEach(function(file) {      
+          if(typeof file.origin === "undefined" || file.origin=="disk") //significa que es un fichero real en disco
+          {
+          file.remote_dir_id=dir_get_remote_id(dirmatch_table_local,file.dir);    
+          //ver si el fichero existe en remoto
+          var filtered = data.files.filter(function(entry) { return ((entry.name === file.name) && (entry.dir==file.remote_dir_id) ); });
+          if(filtered.length>0)
+          {
+            var item = filtered[0];
+          }
+          else{      //si no existe
+
+            var bMovidoORenombrado=false;
+            var fichero_encontrado=null;
+            //mirar si se ha movido o renombrado
+            var filtered2 = data.files.filter(function(entry) { return (entry.digest === file.hash) });
+            if(filtered2.length>0)
+            {
+              //mirar si el otro fichero tiene correspondencia local
+              var bHayFicheroMismoHashSinCorrespondencia=false;
+              
+              for(j=0;(!bHayFicheroMismoHashSinCorrespondencia && j<=filtered2.length-1 ) ;j++)
+              {              
+                let item2 = filtered2[j];
+                if(!item2.movido) //ya ha sido movido en una operacion anterior
+                {
+                  let local_dir=dirmatch_table_remote[item2.dir];
+                  let filtered3=[];
+                  if(typeof local_dir!=="undefined") 
+                    filtered3 = localfiles.filter(function(entry) { return ((entry.name === item2.name) && (local_dir==entry.dir) ); });
+                  if(filtered3.length>0)
+                  {
+                    //tiene correspondencia, por lo tanto no es movido
+                  
+                  }
+                  else
+                  {
+                    bHayFicheroMismoHashSinCorrespondencia=true;
+                    fichero_encontrado=item2;
+                    fichero_encontrado.movido=true;
+                  }
+                }
+              }
+              if(bHayFicheroMismoHashSinCorrespondencia)
+              {
+                bMovidoORenombrado=true;                
+              }
+            }
+
+            if(bMovidoORenombrado)
+            {
+              //mover y renombrar
+              let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
+              if(typeof remotedir === "undefined")
+                remotedir=-1;
+              //if(remotedir>=0)
+              {
+                if(remotedir>=0 && check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"dir":remotedir  }))
+                {
+                  let newpath=get_local_path_from_remote_id(path,fichero_encontrado.dir)+"/"+fichero_encontrado.name;
+                  //if(typeof local_dir !== "undefined")
+                  {
+                    var opid=push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"movefile",
+                                                      "name":file.name,"path":file.path,"filetype":file.type,
+                                                      "filesize":file.size,
+                                                      "newname":fichero_encontrado.name,"newpath":newpath});
+                    file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                    fichero_encontrado.opid=opid;                                                      
+                  }
+                  /*else
+                  {
+                    console.log("Moving to unexistent local directory");
+                  }*/
+                }
+                else
+                {
+                  var opid;
+                  if(fichero_encontrado.dir==remotedir)
+                  {
+                    if(check_remote_operations(remote_operations,{"typecode":"file_rename","id":fichero_encontrado.id,
+                                                            "newname":fichero_encontrado.name}))
+                    {
+                      let newpath=get_local_path_from_remote_id(path,remotedir)+"/"+fichero_encontrado.name;
+                      //let local_dir=dirmatch_table_remote[fichero_encontrado.dir];
+                      //if(typeof local_dir !== "undefined")
+                      {
+                        //var newpath=get_local_path_from_local_id(localdirs,local_dir)+"/"+fichero_encontrado.name;
+                        var opid=push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"movefile",
+                                                      "name":file.name,"path":file.path,"filetype":file.type,
+                                                      "newname":fichero_encontrado.name,"newpath":newpath});
+                        file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                        fichero_encontrado.opid=opid;
+                      }
+                      /*else
+                      {
+                        console.log("Moving to unexistent local directory");
+                      }*/
+                    }
+                    else if(remotedir>=0)
+                    {
+                      //renombrar remoto
+                      opid=push_operation(operations,{"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
+                                                    "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
+                                                    "filetype":file.type,"filesize":file.size,
+                                                    "localdir":file.dir,"newname":file.name,"newdir":remotedir});
+                      file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                      fichero_encontrado.opid=opid;
+                    }
+                  }
+                  else 
+                  {
+                    //mover remoto
+                    opid=push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
+                                                    "filesize":file.size,"filetype":file.type,
+                                                    "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
+                                                    "localdir":file.dir,"newname":file.name,"newdir":remotedir});
+                    file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                    fichero_encontrado.opid=opid;
+                  }
+                }
+              }
+            }
+            else
+            {
+              let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
+              if(typeof remotedir === "undefined")
+                remotedir=-1;
+              //si no es movido o renombrado
+              if(check_remote_operations(remote_operations,{"typecode":"delete_file","auxname":file.name,"auxid":remotedir}) ||
+                (check_remote_operations(remote_operations,{"typecode":"delete_file","auxname":file.name,"auxid":"*"}) &&
+                 check_remote_operations(remote_operations,{"typecode":"delete_dir","auxname":"*","auxid":remotedir}))
+                 || check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"dir":"*"}) )
+              {
+                push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"deletefile","name":file.name,"type":file.type,"size":file.size,"path":file.path,"dir":file.dir});
+              }
+              else
+              {
+                push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":file.path,"size":file.size,"filetype":file.type,"dir":remotedir});
+              }
+            }
+          }
+          }
+        });
+
+        
+        remotefiles.forEach(function(file) {          
+          var filtered = localfiles.filter(function(entry) { return ((entry.name === file.name) && (entry.remote_dir_id==file.dir)  ); });
+          if(filtered.length>0)
+          {
+            var item = filtered[0];//!!hay que hacer bucle porque puede que haya mas de uno 
+            if( item.hash!=file.digest && (item.origin=="disk" || typeof item.origin ==="undefined"))
+            {
+              let path2=get_local_path_from_remote_id(path,file.dir);
+              if(check_remote_operations(remote_operations,{"typecode":"upload","auxname":file.name,"auxid":file.dir}))
+              {
+                  push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
+                    "tipo":file.tipo,"path":path2,"dir":file.dir});
+              }
+              else
+              {
+                  push_operation(operations,
+                    {"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":path2+"/"+file.name,"filetype":item.type,"dir":file.dir,"size":item.size});
+                  
+              }
+            }
+            else if( item.origin!="disk" && typeof item.origin !=="undefined")
+            {
+                let path2=get_local_path_from_remote_id(path,file.dir);
+                //si es un fichero que estaba en descarga volvemos a dar la señal de descarga
+                push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
+                    "tipo":file.tipo,"path":path2,"dir":file.dir});
+            }
+            
+          }
+          else{      
+            //comprobar si se ha renombrado o movido
+
+            if(typeof file.opid === "undefined")//si no hay una operacion ya asociada
+            {
+              //si es nuevo fichero subido
+              //!!falta añadir el ccheck_remote_operations para cuando se mueve desde una carpeta no sincronizada a una sincronizada
+              if(file.origin=="pending_transactions" || check_remote_operations(remote_operations,{"typecode":"upload","auxname":file.name,"auxid":file.dir})
+                || check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"newdir":file.dir})
+                )
+              {
+                //!!puedo sacar el path local de otra forma y entonces funcionará
+                //let local_dir=dirmatch_table_remote[file.dir];
+                //if(typeof local_dir !== "undefined")
+                {
+                  //let path2=get_local_path_from_local_id(localdirs,local_dir);
+                  let path2=get_local_path_from_remote_id(path,file.dir);
+                  push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
+                    "tipo":file.tipo,"path":path2,"dir":file.dir});
+                }
+                /*else
+                {
+                  console.log("Trying to write to inexistent path");
+                }*/
+              }
+              //si es antiguo fichero que se ha borrado en local
+              else
+              { 
+                //let dir=dir_get_remote_id(dirmatch_table_local,file.dir);
+                push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"deletefile","name":file.name,"filesize":file.size,
+                  "filetype":file.tipo,"dir":file.dir});
+              }
+            }
+          }
+        });
+
+        cancel_current_operation_if_needed(data.dir,operations);
+        run_operations(data.dir,operations);
+
+        document.getElementById('targetFrame').contentWindow.check_transactions_queue();
+        document.getElementById('targetFrame').contentWindow.display_transactions();
+
+        //if(nrunned==0)
+        {
+          g_last_update_date[data.dir]=data.date;
+          localStorage.setItem("last_update_date"+data.dir+"_"+g_user, g_last_update_date[data.dir]);
+        }
+        
+    });    
+  }
+  //***************************************************************************************************
+  //***************************************************************************************************
+  //***************************************************************************************************
+  else if(data.id=="login_error")
+  {
+    quitar_initializing();
+  }
+  else if(data.id=="login")
+  {
+    g_login=true;
+    g_user=data.user;    
+    localStorage.setItem("user",data.user);
+    localStorage.setItem("password",data.password);
+    poner_initializing("Initializing ...");
+    var pjson = require('./package.json');    
+    var sversion = pjson.version;
+    //document.getElementById("targetFrame").src=g_server_url+"login?sync=1&puser="+encodeURIComponent(data.user)+"&ppassword="+encodeURIComponent(data.password);
+    document.getElementById("targetFrame").src=g_server_url+"login?sync=1&puser="+encodeURIComponent(data.user)+"&ppassword="+encodeURIComponent(data.password)+"&version="+sversion+"&cid="+g_client_id;
+  }
+  //***************************************************************************************************
+  //***************************************************************************************************
+  //***************************************************************************************************
+  else if(data.id=="start_watching_folders")
+  {
+    if(g_login)
+    {
+      quitar_initializing();
+      g_login=false;
+      if (process.platform === 'win32') 
+      {
+        var folder=app.getPath("appData");
+        //folder = folder.replace(/\\/g, '/');
+        folder+="\\Oficloud Shared ("+data.public_dir+")";
+        console.log("Shared folder: " +folder);
+        if( fs.existsSync(folder) ) {
+          /*files = fs.readdirSync(path);
+          files.forEach(function(file,index){
+            var curPath = path + "/" + file;
+            if(fs.lstatSync(curPath).isDirectory()) { // recurse
+                deleteFolderRecursive(curPath);
+            } else { // delete file
+                fs.unlinkSync(curPath);                
+            }
+          });*/
+          
+        }
+        else
+        {
+          fs.mkdirSync(folder);
+          winattr.setSync(folder, {system:true});
+          fs.writeFile(folder+"/desktop.ini", "[.ShellClassInfo]\r\nInfoTip=Tu carpeta de Oficloud contiene los archivos que sincronizas con tu la carpeta pública de tu cuenta.\r\nIconFile="+__dirname+"\\icon.ico\r\nIconResource="+__dirname+"\\icon.ico\r\nIconIndex=0", 
+            'ascii',
+            function(err) {
+              if(err) {
+                return console.log(err);
+              }
+
+              console.log("The file was saved!");
+          }); 
+          winattr.setSync(folder+"/desktop.ini", {system:true,hidden:true});
+        }
+        var sl=process.env['USERPROFILE']+"\\Links\\Oficloud Shared.lnk";
+        //sl = sl.replace(/\\/g, '/');
+        //fs.symlinkSync(folder,sl+"AUX",'junction');
+        var ws = require('windows-shortcuts');
+        try
+          {
+            fs.unlinkSync(sl);
+          }
+          catch(e){
+
+          }
+        ws.create(sl, {
+	        target : folder,
+	        args : '2 "baz quux"',
+	        runStyle : ws.MIN,
+	        desc : "Oficloud public folder."
+        }, function(err) {
+	        if (err)
+          {
+            console.log("Error: "+err);
+		        throw Error(err);
+          }
+	        else
+		        console.log("Shortcut created!");
+        });
+
+        /*var cmd="mklink /d \""+sl+"AUX\" \""+folder+"\""        
+        exec(cmd, function(error, stdout, stderr){ */
+          /*try
+          {
+            fs.unlinkSync(sl);
+          }
+          catch(e){
+
+          }
+          try
+          {
+            fs.renameSync(sl+"AUX",sl);
+          }
+          catch(e){
+
+          }*/
+                
+          SetWindowsFolderInWindows10Explorer(folder,'HKCU\\SOFTWARE\\Classes\\CLSID\\{91221D5C-169C-4AC2-9226-23FD9DB84310}');
+          SetWindowsFolderInWindows10Explorer(folder,'HKCU\\SOFTWARE\\Classes\\Wow6432Node\\CLSID\\{91221D5C-169C-4AC2-9226-23FD9DB84310}');
+        //});
+        //
+        add_sync(g_user,data.public_dir,folder)
+      }
+    }
+    if(typeof g_client_id==="undefined" || g_client_id==null || g_client_id=="")
+    {
+      g_client_id=random_string(32);
+      localStorage.setItem("client_id", g_client_id);
+
+      if (process.platform === 'win32') 
+      {
+        var folder=app.getPath("appData");
+        folder = folder.replace(/\\/g, '/');
+        folder+="/Oficloud Shared ("+data.public_dir+")";
+        console.log("Shared folder: " +folder);
+        if( fs.existsSync(folder) ) {
+          /*files = fs.readdirSync(path);
+          files.forEach(function(file,index){
+            var curPath = path + "/" + file;
+            if(fs.lstatSync(curPath).isDirectory()) { // recurse
+                deleteFolderRecursive(curPath);
+            } else { // delete file
+                fs.unlinkSync(curPath);                
+            }
+          });*/
+          
+        }
+        else
+        {
+          fs.mkdirSync(folder);
+        }
+        var version=os.release().split(".");
+        if( (parseInt(version[0])>6 || (parseInt(version[0])==6 && parseInt(version[1])>=4) ))
+        {
+          SetWindowsFolderInWindows10Explorer(folder,'HKCU\\SOFTWARE\\Classes\\CLSID\\{91221D5C-169C-4AC2-9226-23FD9DB84310}'); 
+          SetWindowsFolderInWindows10Explorer(folder,'HKCU\\SOFTWARE\\Classes\\Wow6432Node\\CLSID\\{91221D5C-169C-4AC2-9226-23FD9DB84310}');         
+        }
+        else{
+          var sl=process.env['USERPROFILE']+"/../Links/Oficloud Shared";
+          try
+          {
+            fs.symlinkSync(folder,sl,"junction");
+            add_sync(g_user,data.public_dir,folder);
+          }
+          catch(e)
+          {
+            console.log(e);
+          }
+        }
+      }
+
+      
+
+      //fs.unlinkSync("newinstall");
+      //deleteFolderRecursive("newinstall");
+      
+    }
+
+    //!! test execute scripts
+    document.getElementById('targetFrame').contentWindow.set_posts_callback(plugins.my_posts_callback);
+    document.getElementById('targetFrame').contentWindow.set_messages_callback(plugins.my_msgs_callback);
+
+    document.getElementById('targetFrame').contentWindow.set_transactions_callback(my_transactions_callback);
+    for(var i=0;i<syncs.length;i++)
+    {
+      g_last_update_date[syncs[i].dir]=localStorage.getItem("last_update_date"+syncs[i].dir+"_"+g_user);
+      watch(syncs[i].dir,syncs[i].path);
+      g_previous_filelist[syncs[i].dir]=[];
+      g_no_activity[syncs[i].dir]=true;
+      g_timeout_prestart[syncs[i].dir]=null;
+    }
+    document.getElementById('targetFrame').contentWindow.set_syncs(syncs);
+    document.getElementById('targetFrame').contentWindow.set_client_id(g_client_id);
+    check_sync_remote();
+
+    if(syncs.length==0)
+      setTimeout(function () {quitar_initializing()},1000);
+
+
+  }
+  //***************************************************************************************************
+  //***************************************************************************************************
+  //***************************************************************************************************
+  else if(data.id=="make_syncing_folder")
+  {
+    select_folder(function(afolder){
+      
+     if(typeof afolder !== "undefined")
+     {
+      var folder=afolder[0];
+      folder=folder.replaceAll("\\","/");
+      console.log("new sync folder: "+data.dir+" -> "+folder);
+      var b=true;
+      
+      for(var i=0;i<syncs.length;i++)
+      {
+        var sync=syncs[i];
+        var x=folder.indexOf(sync.path);
+        if(sync.dir==data.dir)
+        {
+          document.getElementById('targetFrame').contentWindow.tip("The remote directory was already synced.",3,2500,"error");
+          b=false;
+        }
+        else if(sync.path==folder)
+        {
+          document.getElementById('targetFrame').contentWindow.tip("The local directory was already synced.",3,2500,"error");
+          b=false;
+        }
+        else if(sync.path.indexOf(folder)==0 && sync.path.charAt(folder.length)=='/')
+        {
+          document.getElementById('targetFrame').contentWindow.tip("The local folder contains an already synced folder.",3,2500,"error");
+          b=false;
+        }
+        else if(folder.indexOf(sync.path)==0  && folder.charAt(sync.path.length)=='/')
+        {
+          document.getElementById('targetFrame').contentWindow.tip("The local folder is inside an already synced folder.",3,2500,"error");
+          b=false;
+        }
+                
+      }
+      if(b)
+      {
+          add_sync(g_user,data.dir,folder);
+          
+      }
+      //new_sync_folder(data.dir,folder);
+     }
+    })
+  }
+  //***************************************************************************************************
+  //***************************************************************************************************
+  //***************************************************************************************************
+  else if(data.id=="unsync_folder")
+  {
+    
+      for(var i=0;i<syncs.length;i++)
+      {
+        var sync=syncs[i];
+        if(sync.dir==data.dir)
+        {
+
+          localStorage.removeItem("sync_"+data.dir+"_"+g_user);
+          localStorage.removeItem("last_update_date"+data.dir+"_"+g_user);
+
+          //parar todos los syncs
+          parar_y_recargar_syncs(function(){
+
+            document.getElementById('targetFrame').contentWindow.set_syncs(syncs);
+            setTimeout("check_sync_remote()",1000);
+            document.getElementById('targetFrame').contentWindow.refresh_directory();
+            
+            document.getElementById('targetFrame').contentWindow.tip("The directory has been successfully unsynced.",3,2500,"success");
+          })
+
+        }
+                
+      }
+      
+  }
+
+}
+
+
+function execute(command, callback){
+    exec(command, function(error, stdout, stderr){ 
+      callback(stdout); 
+    });
+};
+
+function dir_get_remote_id(match_table,local_id)
+{
+  return match_table[local_id];
+}
+
+function get_local_path_from_local_id(localdirs,local_dir)
+{
+  if(localdirs.id==local_dir)
+    {
+      var res=localdirs.path;
+      return res;
+    }  
+  for(var i=0;i<localdirs.subdirs.length;i++)
+  {
+    var localdir=localdirs.subdirs[i];    
+    let path=get_local_path_from_local_id(localdir,local_dir)
+    if(path!="")
+    {
+      return path;
+    }
+  }
+  return "";
+}
+
+function get_local_path_from_remote_id(path,dirid)
+{
+  var s=g_remotedir_path_table[dirid];
+  return path+s;
+}
+
+var g_pending_operations=[];
+
+
+//var g_previously_run_operations=[];
+
+function run_operations(sync_folder,operations)
+{
+  var localrootpath=get_sync_path(sync_folder);
+
+  var ordered_operations=operations.slice();
+  ordered_operations.sort(function (a,b){
+
+    if(a.type=="local" && b.type=="local" && a.op=="deletedir" && b.op=="deletedir")
+    {
+      var na=a.path.match(/\//g).length;
+      var nb=b.path.match(/\//g).length;
+      if(na>nb)
+        return 1;
+      if(na<nb)
+        return -1;
+      return 0;
+    }
+
+    if(a.type=="remote" && b.type=="remote" && a.op=="deletedir" && b.op=="deletedir")
+    {
+      var a_path=get_local_path_from_remote_id(localrootpath,a.id);
+      var b_path=get_local_path_from_remote_id(localrootpath,b.id);
+      var na=a_path.match(/\//g).length;
+      var nb=b_path.match(/\//g).length;
+      if(na>nb)
+        return 1;
+      if(na<nb)
+        return -1;
+      return 0;
+    }
+    
+    if(a.type=="local" && b.type=="local" && a.op=="createdir" && b.op=="createdir")
+    {
+      if(a.path.length<b.path.length)
+        return 1;
+      if(a.path.length>b.path.length)
+        return -1;
+      return 0;
+    }
+
+    if(a.op=="download" && b.op=="download")
+    {
+      if(a.size<b.size)
+        return 1;
+      if(a.size>b.size)
+        return -1;
+      return 0;
+    }
+
+    if(a.op=="upload" && b.op=="upload")
+    {
+      if(a.size<b.size)
+        return 1;
+      if(a.size>b.size)
+        return -1;
+      return 0;
+    }
+
+    if(a.op=="createdir" && b.op!="createdir")
+      return 1;
+    if(b.op=="createdir" && a.op!="createdir")
+      return -1;
+    if(a.op=="movefile" && b.op!="movefile")
+      return 1;
+    if(b.op=="movefile" && a.op!="movefile")
+      return -1;
+    if(a.op=="deletefile" && b.op!="deletefile")
+      return 1;
+    if(b.op=="deletefile" && a.op!="deletefile")
+      return -1;
+    
+    if(a.op=="deletedir" && b.op!="deletedir")
+      return -1;
+    if(b.op=="deletedir" && a.op!="deletedir")
+      return 1;
+
+
+    return 0;
+  })
+
+  /*var ordered_operations=[];
+  operations.forEach(function(op) {
+    switch(op.op)
+    {
+      case "createdir":
+        ordered_operations.push(op);
+        break;
+    }
+  });   
+  
+  operations.forEach(function(op) {
+    switch(op.op)
+    {
+      case "createdir":
+      case "deletedir":
+        break;
+      default:
+        ordered_operations.push(op);
+        break;
+    }
+  });   
+  var aux_operations=[];
+  operations.forEach(function(op) {
+    switch(op.op)
+    {
+      case "deletedir":
+        aux_operations.push(op);
+        break;
+    }
+  });   
+  aux_operations.reverse();
+  ordered_operations=ordered_operations.concat(aux_operations);*/
+
+  ordered_operations.reverse(); 
+
+  var nrunned=do_run_operations(sync_folder,ordered_operations);
+  //g_previously_run_operations=ordered_operations;
+  
+  return nrunned;
+}
+
+
+function borrar_operacion(operations,op)
+{
+  for(var i=0;i<operations.length;i++)
+  {
+    var entry=operations[i];
+    if(entry.op == op.op && entry.dir==op.dir && entry.name==op.name && entry.path==op.path)
+    {
+      operations.splice(i,1);
+    }
+  }
+}
+
+deleteFolderRecursive = function(path) {
+
+  /*trash([path]).then(()=>{
+                  console.log("Moved to trash: "+path);
+                });*/
+
+    var files = [];
+    if( fs.existsSync(path) ) {
+        files = fs.readdirSync(path);
+        files.forEach(function(file,index){
+            var curPath = path + "/" + file;
+            if(fs.lstatSync(curPath).isDirectory()) { // recurse
+                deleteFolderRecursive(curPath);
+            } else { // delete file
+                fs.unlinkSync(curPath);                
+            }
+        });
+        fs.rmdirSync(path);
+    }
+};
+
+function get_date()
+{
+  var currentdate = new Date(); 
+  var datetime = currentdate.getDate() + "/"
+                + (currentdate.getMonth()+1)  + "/" 
+                + currentdate.getFullYear() + " @ "  
+                + currentdate.getHours() + ":"  
+                + currentdate.getMinutes() + ":" 
+                + currentdate.getSeconds();
+  return datetime;
+}
+
+function save_in_aux_log(path,fname,msg)
+{
+  try{
+    path=fspath.resolve(path);
+    if (!fs.existsSync(path))
+    {
+      fs.mkdirSync(path);
+    }
+    try
+    {
+      var hiddenpath=hidefile.hideSync(path);
+      
+      fs.appendFileSync(hiddenpath+"/"+fname, msg+"\n");
+    }
+    catch(e)
+    {
+    }
+                      
+  }
+  catch(e)
+  {
+    console.log(e);
+  }
+}
+
+var time_from_last_notification=null;
+var n_forwarded_notifications=0;
+
+function possible_notification(title,desc)
+{
+  var curtime=new Date().getTime();
+  if(!time_from_last_notification || curtime>time_from_last_notification+60000)
+  {
+    var message=desc;
+    if(n_forwarded_notifications>0)
+    {
+      message=desc+" and "+n_forwarded_notifications+" more updates";
+      title="Status update";
+    }
+
+    if (process.platform !== 'win32') 
+    {
+
+      var notif = new window.Notification(title, {
+        body: message,
+        icon: balloon_image,
+        silent: true // We'll play our own sound
+      })
+    }
+    else
+    {
+      /*var notif = new window.Notification(title, {
+        body: message,        
+        silent: true // We'll play our own sound
+      })*/
+      appIcon.displayBalloon({
+                    
+                    title:title,
+                    content: message
+                    }); 
+    }
+
+    time_from_last_notification=curtime;
+    n_forwarded_notifications=0;
+  }
+  else{
+    n_forwarded_notifications++;
+  }
+}
+
+//indexado por id de directorio local
+//contiene: id remoto
+var g_directorios_creados=[]; //para guardar id remoto de directorios recien creados. se usará al crear ficheros en ese directorio
+
+function do_run_operations(sync_folder,operations)
+{
+  /*if(g_running_remote_operations)
+    return;*/
+  
+  var n_operaciones_remotas=0;
+  var n_operaciones=0;
+  
+  g_pending_operations[sync_folder]=new Map();
+
+  push_current_pending_transaction_if_needed(sync_folder);
+
+  console.log("operations: "+JSON.stringify(operations));
+  operations.forEach(function(op) {
+    if(op.estado!="cancelada")
+    {
+    switch(op.op)
+    {
+      case "createdir":
+        if(op.type=="remote")
+        {
+          if(op.parent>=0)
+          {          
+          /*var filtered = g_pending_operations[sync_folder].filter(function(entry) { return entry.op == op.op && entry.dir==op.dir 
+            && entry.name==op.name && entry.path==op.path; });*/
+          var filtered=g_pending_operations[sync_folder].get(op.op+"-"+op.parent+"-"+op.id+"-"+op.name+"-"+op.path);
+          if(!filtered)
+          {
+            n_operaciones_remotas++;
+            //g_pending_operations[sync_folder].push(op);
+            g_pending_operations[sync_folder].set(op.op+"-"+op.parent+"-"+op.id+"-"+op.name+"-"+op.path,op);
+            {
+              crear_directorio(sync_folder,op.name,op.parent,function (errcode,id){
+                  //console.log("new dir id: "+id);
+                  g_directorios_creados[op.localdir]=id; //                
+                  /*var pos=g_pending_operations[sync_folder].indexOf(op);
+                  g_pending_operations[sync_folder].splice(pos,1);*/
+                  g_pending_operations[sync_folder].delete(op.op+"-"+op.parent+"-"+op.id+"-"+op.name+"-"+op.path);
+                  document.getElementById('targetFrame').contentWindow.onEndTransaction();
+
+                  if(errcode=="Permission denied")
+                  {
+                    var localrootpath=get_sync_path(sync_folder);
+                    let path0=get_local_path_from_remote_id(localrootpath,op.parent);
+                    let path=path0+"/"+op.name;
+                    var hpath=path0+"/.__oficloud";
+                    var fname=op.name+".DIR.txt";
+                    save_in_aux_log(hpath,fname,"("+get_date()+") Could not create dir: permission denied");
+                    try
+                    {
+                      if(fs.existsSync(hpath+"/"+op.name))
+                        deleteFolderRecursive(hpath+"/"+op.name);
+                      fs.renameSync(path,hpath+"/"+op.name);
+                    }
+                    catch(e)
+                    {
+                      console.log("Fallo moviendo fichero a carpeta __oficloud");
+                    }
+                  }
+              });
+            } 
+          }
+          }      
+          else
+          {
+              console.log("creating dir with wrong parent");
+          }           
+        }
+        else
+        {
+          var pathname=op.path+"/"+op.name;
+          if (!fs.existsSync(pathname)){
+            try
+            {
+              console.log("LOCAL -> mkdir "+pathname);
+              fs.mkdirSync(pathname);
+              document.getElementById('targetFrame').contentWindow.push_new_served_transaction({target:"local",op:"newdir",file:pathname,
+                    status:""});
+              document.getElementById('targetFrame').contentWindow.display_transactions();                                  
+
+            }
+            catch(err)
+            {
+              console.log(err.message);
+            }
+          }
+        }
+        break;
+      case "deletedir":
+        if(op.type=="remote")
+        {
+          //!!cancelar operaciones pendientes de createdir
+          //cancel_transactions({"ops":["createdir"],filename:op.name,dir:op.dir});
+
+          //var filtered = g_pending_operations[sync_folder].filter(function(entry) { return entry.op == op.op && entry.dir==op.dir && entry.name==op.name && entry.path==op.path; });
+          var filtered=g_pending_operations[sync_folder].get(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path);
+          //if(filtered.length==0)
+          if(!filtered)
+          {
+            n_operaciones_remotas++;
+            //g_pending_operations[sync_folder].push(op);              
+            g_pending_operations[sync_folder].set(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path,op);
+            borrar_directorio(sync_folder,op.id,op.name,function(err_code,error_list) {
+              /*var pos=g_pending_operations[sync_folder].indexOf(op);
+              g_pending_operations[sync_folder].splice(pos,1);*/
+              g_pending_operations[sync_folder].delete(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path);
+              document.getElementById('targetFrame').contentWindow.onEndTransaction();
+              
+              if(err_code!="errors")
+              {
+                
+              }
+              else
+              {
+                for(var i=0;i<error_list.length;i++)
+                {
+                  var err=error_list[i];
+                  if(err.error=="Permission denied")
+                  {
+                    var localrootpath=get_sync_path(sync_folder);
+                    let path=get_local_path_from_remote_id(localrootpath,op.parent);
+                    var hpath=path+"/.__oficloud";
+                    var fname=op.name+".txt";
+                    save_in_aux_log(hpath,fname,"("+get_date()+") Could not delete folder: permission denied");
+                    fs.mkdirSync(path+"/"+op.name);      
+                  }
+                  if(err.error=="Directory is not empty")
+                  {
+                    error_list[i].error="Postponed: directory still not empty";
+                    error_list[i].desc="";
+                    g_b_sync_again[sync_folder]=true;
+                  }
+                }
+              }
+            });
+          }
+        }
+        else
+        {
+          var pathname=op.path;
+          if (fs.existsSync(pathname+"/Thumbs.db"))
+            fs.unlinkSync(pathname+"/Thumbs.db");          
+          try
+          {
+            console.log("LOCAL -> rmdir "+pathname);
+            //fs.rmdirSync(pathname);
+            deleteFolderRecursive(pathname);
+            document.getElementById('targetFrame').contentWindow.push_new_served_transaction({target:"local",op:"delete",filename:pathname,
+                      filetype:"directory",status:""});
+            document.getElementById('targetFrame').contentWindow.display_transactions();                                  
+
+          }
+          catch(err)
+          {
+            console.log(err.message);
+          }
+        }
+        break;
+      case "upload":
+          //var filtered = g_pending_operations[sync_folder].filter(function(entry) { return entry.op == op.op && entry.dir==op.dir && entry.name==op.name && entry.path==op.path; });
+          var filtered = g_pending_operations[sync_folder].get(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path);
+          //if(filtered.length==0)
+          if(!filtered)
+          {
+            n_operaciones_remotas++;
+            //g_pending_operations[sync_folder].push(op);
+            g_pending_operations[sync_folder].set(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path,op);
+            var cloudEventHandler = function (opcode,params)
+            {
+              if(opcode=="upload")
+              {
+                /*var pos=g_pending_operations[sync_folder].indexOf(op);
+                g_pending_operations[sync_folder].splice(pos,1);*/
+                g_pending_operations[sync_folder].delete(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path);
+                //if (process.platform !== 'darwin') 
+                {
+                  possible_notification("Upload",params.name+ ' uploaded');
+                }
+              }
+              else if(opcode=="error")
+              {
+                //quizas uno de los parametros devueltos deberia ser trid
+                //console.log(params.message);
+                if(params.message=="Permission denied")
+                {
+                  var localrootpath=get_sync_path(sync_folder);
+                  let path=get_local_path_from_remote_id(localrootpath,op.dir);
+                  var hpath=path+"/.__oficloud";
+                  var fname=op.name+".txt";
+                  save_in_aux_log(hpath,fname,"("+get_date()+") Could not upload file: permission denied");
+                  try
+                  {
+                    fs.renameSync(op.path,hpath+"/"+op.name);
+                  }
+                  catch(e)
+                  {
+                    console.log("Fallo moviendo fichero a carpeta __oficloud");
+                  }
+                }
+              }
+            };
+            if(typeof op.dir !== "undefined" && op.dir!=-1)
+              subir_fichero(sync_folder,op.path,op.dir,op.filetype,op.size,cloudEventHandler);
+            else
+            {
+              console.log("Fatal error: trying to submit to inexistent dir.");
+              g_b_sync_again[sync_folder]=true;
+              //document.getElementById('targetFrame').contentWindow.alert_message("Fatal error: trying to submit to inexistent dir.");              
+            }
+          }
+        break;
+      case "download":
+          //var filtered = g_pending_operations[sync_folder].filter(function(entry) { return entry.op == op.op && entry.dir==op.dir && entry.name==op.name && entry.path==op.path; });
+          var filtered = g_pending_operations[sync_folder].get(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path);
+          //if(filtered.length==0)
+          if(!filtered)
+          {
+            n_operaciones_remotas++;
+            //g_pending_operations[sync_folder].push(op);            
+            g_pending_operations[sync_folder].set(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path,op);
+            guardar_operacion_persistente(sync_folder,op);
+            bajar_fichero(sync_folder,op.path+"/"+op.name,op.dir,op.id,op.name,op.size,op.tipo,function (op2,params)
+              {
+                if(op2=="download")
+                {
+                  /*var pos=g_pending_operations[sync_folder].indexOf(op);
+                  g_pending_operations[sync_folder].splice(pos,1);*/
+                  g_pending_operations[sync_folder].delete(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path);
+                  eliminar_operacion_persistente(sync_folder,op);
+                  //if (process.platform !== 'darwin') 
+                  {
+                    possible_notification("Download",params.name+ ' downloaded');
+                    
+                  }
+                }
+                else if(op2=="error")
+                {
+                  if(params.message=="Permission denied")
+                  {
+                    /*if(op.nfails>=3)
+                    {
+                      
+                    }
+                    else
+                      actualizar_operacion_persistente(sync_folder,op,"INC_FAILS");*/
+                  }
+                  if(params.message.code=="ENOENT" && op.type=="local") //si es una descarga guardada en localstorage y no puede descargarse porque ya no existe el fichero
+                  {
+                    eliminar_operacion_persistente(sync_folder,op);
+                  }
+                  console.log(params.message);
+                }
+              });
+          }
+        break;
+      case "deletefile":
+        //!!cancelar operaciones pendientes de upload o move o rename
+        //cancel_transactions({"ops":["upload","move","renamefile"],filename:op.name,dir:op.dir});
+
+        if(op.type=="remote")
+        {
+          //var filtered = g_pending_operations[sync_folder].filter(function(entry) { return entry.op == op.op && entry.dir==op.dir && entry.name==op.name && entry.path==op.path; });
+          var filtered = g_pending_operations[sync_folder].get(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path)
+          //if(filtered.length==0)
+          if(!filtered)
+          {
+            n_operaciones_remotas++;
+            //g_pending_operations[sync_folder].push(op);
+            g_pending_operations[sync_folder].set(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path,op);
+            
+            borrar_fichero(sync_folder,op.name,op.dir,op.filetype,op.filesize,function(err_code,error_list) {
+              /*var pos=g_pending_operations[sync_folder].indexOf(op);
+              g_pending_operations[sync_folder].splice(pos,1);*/
+              g_pending_operations[sync_folder].delete(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.path);
+
+              document.getElementById('targetFrame').contentWindow.onEndTransaction();
+
+              if(err_code=="Permission denied")
+              {
+                
+              }
+              else if(err_code=="File doesn't exist")
+              {
+                return["File doesn't exist","File already deleted"];
+              }
+              else if(err_code=="errors")
+              {
+                for(var i=0;i<error_list.length;i++)
+                {
+                  var err=error_list[i];
+                  if(err.error=="Permission denied")
+                  {
+                    var localrootpath=get_sync_path(sync_folder);
+                    let path=get_local_path_from_remote_id(localrootpath,op.dir);
+                    var hpath=path+"/.__oficloud";
+                    var fname=op.name+".txt";
+                    save_in_aux_log(hpath,fname,"("+get_date()+") Could not delete file: permission denied");
+
+                    var newop= {"sync_folder":sync_folder,"type":"local","op":"download","name":op.name,"id":op.id,"size":-1,
+                      "tipo":"","path":op.path,"dir":op.dir};                    
+                    guardar_operacion_persistente(sync_folder,newop);
+                  }
+                  else if(err.error=="File doesn't exist")
+                  {
+                     error_list[i].desc="File already deleted";
+                  }
+                }
+              }
+            });
+          }
+        }
+        else
+        {
+          var pathname=op.path;//+"/"+op.name;
+          try
+          {
+            console.log("LOCAL -> unlink "+pathname);
+            
+            fs.unlinkSync(pathname);
+
+            //para guardar en carpeta oculta en vez de borrar
+            //problema: al borrar directorio se borraria igualmente -> no protege realmente
+            /*var a=pathname.split("/");
+            var name=a[a.length-1];
+            a.splice(a.length-1,1);
+            var hpath=a.join("/")+"/.__oficloud";
+            
+            //save_in_aux_log(hpath,op.name,"("+get_date()+") File deleted");
+            try
+            {
+                hpath=fspath.resolve(hpath);
+                var hiddenpath=hpath;
+                if (!fs.existsSync(hpath))
+                {
+                  fs.mkdirSync(hpath);
+                  hiddenpath=hidefile.hideSync(hpath);
+                }
+                if (fs.existsSync(hiddenpath+"/"+name))
+                  fs.unlinkSync(hiddenpath+"/"+name);  
+                fs.renameSync(pathname,hiddenpath+"/"+name);
+            }
+            catch(e)
+            {
+              fs.unlinkSync(pathname);
+              console.log("Fallo moviendo fichero a carpeta __oficloud");
+            }*/
+
+            /*var pathname2=pathname.replaceAll("/","\\");
+            trash([pathname2]).then(()=>{
+                  console.log("Moved to trash: "+pathname);
+                });*/
+
+            document.getElementById('targetFrame').contentWindow.push_new_served_transaction({target:"local",op:"delete",filename:pathname,size:op.size,
+              filetype:op.type,status:""});
+            document.getElementById('targetFrame').contentWindow.display_transactions();
+          }
+          catch(err)
+          {
+            console.log(err.message);
+            document.getElementById('targetFrame').contentWindow.push_new_served_transaction({target:"local",op:"delete",filename:pathname,
+              status:"[cancelled]: could not delete it"});
+            document.getElementById('targetFrame').contentWindow.display_transactions();
+          }
+        }
+        break;
+      case "movefile":
+        if(op.type=="remote")
+        {
+          //!!cancelar operaciones pendientes de upload o move o rename (o delete?)
+          //cancel_transactions({"ops":["upload","move","renamefile"],filename:op.name,dir:op.dir});
+
+          /*var filtered = g_pending_operations[sync_folder].filter(function(entry) { return entry.op == op.op && 
+            entry.dir==op.dir && entry.name==op.name && entry.newname==op.newname && entry.newdir==op.newdir; });*/
+          var filtered = g_pending_operations[sync_folder].get(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.newname+"-"+op.newdir)
+          //if(filtered.length==0)
+          if(!filtered)
+          {
+            n_operaciones_remotas++;
+            //g_pending_operations[sync_folder].push(op);
+            g_pending_operations[sync_folder].set(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.newname+"-"+op.newdir,op);
+          
+           if(op.dir!=op.newdir)
+           {
+             let b=true;
+             if(op.newdir=="-1")
+             {
+               op.newdir=g_directorios_creados[op.localdir];
+               if(typeof op.newdir === "undefined")
+               {
+                  op.newdir=-1;
+                  b=false;
+               }                
+             }
+             if(b)
+             {
+                mover_fichero(sync_folder,op.name,op.dir,op.newdir,op.filesize,op.filetype,function(err_code,error_list) {
+                    /*var pos=g_pending_operations[sync_folder].indexOf(op);
+                    g_pending_operations[sync_folder].splice(pos,1);*/
+                    g_pending_operations[sync_folder].delete(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.newname+"-"+op.newdir);
+                    document.getElementById('targetFrame').contentWindow.onEndTransaction();
+                    var b=false;
+
+                    if(err_code=="Permission denied")
+                      b=true;
+                    else if(err_code=="File doesn't exist")
+                    {
+                      return ["File doesn't exist","Maybe was already moved"];
+                    }
+                    else if(err_code=="errors")
+                    {
+                      for(var i=0;!b && i<error_list.length;i++)
+                      {
+                        var err=error_list[i];
+                        if(err.error=="Permission denied")
+                          b=true;
+                        else if(err.error=="File doesn't exist")
+                        {
+                          error_list[i].desc="Could be a file attempted to move twice";
+                        }
+                      }
+                    }
+                    if(b)
+                    {
+                          var localrootpath=get_sync_path(sync_folder);
+                          let path=get_local_path_from_remote_id(localrootpath,op.dir);
+                          var hpath=path+"/.__oficloud";
+                          var fname=op.name+".txt";
+                          save_in_aux_log(hpath,fname,"("+get_date()+") Could not move file: permission denied");
+                          
+                          var oldpath=path+"/"+op.name;
+
+                          try{
+                            fs.renameSync(op.path,oldpath);
+                          }
+                          catch(e){
+                            //mover el fichero a carpeta __oficloud y poner en log ?
+                          }
+                          
+                    }
+                });
+             }
+             else
+             {
+                g_b_sync_again[sync_folder]=true;
+                console.log("Fatal error: trying to move to inexistent dir.");
+             }
+           }
+           else //es rename
+           {
+                renombrar_fichero(sync_folder,op.id,op.newname,op.filetype,op.filesize,function(params) {
+                    /*var pos=g_pending_operations[sync_folder].indexOf(op);
+                    g_pending_operations[sync_folder].splice(pos,1);*/
+                    g_pending_operations[sync_folder].delete(op.op+"-"+op.dir+"-"+op.id+"-"+op.name+"-"+op.newname+"-"+op.newdir);
+                    document.getElementById('targetFrame').contentWindow.onEndTransaction();
+
+                    if(params.e=="Permission denied")
+                    {
+                          var localrootpath=get_sync_path(sync_folder);
+                          let path=get_local_path_from_remote_id(localrootpath,op.dir);
+                          var hpath=path+"/.__oficloud";
+                          var fname=op.name+".txt";
+                          save_in_aux_log(hpath,fname,"("+get_date()+") Could not rename file: permission denied");
+                          
+                          var oldpath=path+"/"+op.name;
+                          var newpath=path+"/"+op.newname;
+
+                          try{
+                            fs.renameSync(newpath,oldpath);
+                          }
+                          catch(e){
+                            //mover el fichero a carpeta __oficloud y poner en log ?
+                          }
+                    }
+                });
+           }
+          }
+        }
+        else
+        {
+          var pathname1=op.path;
+          var pathname2=op.newpath;
+          try
+          {
+            console.log("LOCAL -> rename "+pathname1+" "+pathname2);
+            fs.renameSync(pathname1,pathname2);
+            document.getElementById('targetFrame').contentWindow.push_new_served_transaction({target:"local",op:"move",nombre:pathname2,size:op.size,
+              filetype:op.filetype,status:""});
+            document.getElementById('targetFrame').contentWindow.display_transactions();
+            
+          }
+          catch(err)
+          {
+            console.log(err.message);
+          }
+        }
+        break;
+      case "renamedir":
+        if(op.type=="local")
+        {          
+          var pathname1=op.path;
+          var pathname2=op.newpath;
+          
+          try
+          {
+            console.log("LOCAL -> rename "+pathname1+ " "+pathname2);
+            fs.renameSync(pathname1,pathname2);
+            /*document.getElementById('targetFrame').contentWindow.push_new_served_transaction({target:"local",op:"renamedir",nombre:pathname2,size:op.size,
+              filetype:op.filetype,status:""});
+            document.getElementById('targetFrame').contentWindow.display_transactions();*/            
+          }
+          catch(err)
+          {
+            console.log(err.message);
+          }
+        }
+      break;        
+    }
+    n_operaciones++;
+    }
+  });   
+
+  g_n_operaciones=n_operaciones;
+  /*if(n_operaciones_remotas>0)  
+    g_running_remote_operations=true;*/
+  g_running_check=false;
+
+  return n_operaciones_remotas;
+}
+
+function operations_match(op1,op2)
+{
+  op1.replace(/_/g, "");
+  op2.replace(/_/g, "");
+  if(op1==op2)
+    return true;
+  return false;
+}
+
+/*function es_nuestra_operacion(remote_operation,previously_run_operations)
+{
+  for(var i=0;i<previously_run_operations.length;i++)
+  {
+    if("remote"==previously_run_operations[i].type && 
+        operations_match(remote_operation.tipo,previously_run_operations[i].op) && 
+        (remote_operation.params==previously_run_operations[i].name || remote_operation.params.name==previously_run_operations[i].name)
+        && remote_operation.directory==previously_run_operations[i].dir)
+    {
+      return true;
+    }
+  }
+  return false;
+}*/
+
+var g_appState="actualizado";
+
+function setAppState(state)
+{
+  /*if (process.platform != 'win32') {  
+    g_appState=state;
+    return;  
+  }*/
+  if(state=="actualizado")
+  {
+    //console.log("setIcon: "+imageFolder + '/16x16 - 3.png');
+    if (process.platform !== 'win32') {  
+      //console.log("setIcon2: "+imageFolder + '/16x16 - 3.png');
+      appIcon.setImage(imageFolder + '/16x16 - 3.png');
+      appIcon.setPressedImage(imageFolder + '/16x16 - 3.png');
+    }
+    else
+      appIcon.setImage(imageFolder + '/16x16 - 3.png');
+  }
+  else if(state=="inisync")
+  {
+    //aparentemente esto da una excepcion si se pone el mismo icono que ya esta puesto
+    if (process.platform !== 'win32') {  
+      appIcon.setImage(imageFolder + '/16x16 - 1.png');
+      appIcon.setPressedImage(imageFolder + '/16x16 - 1.png');
+    }
+    else
+      appIcon.setImage(imageFolder + '/48x48 - 1.png');
+  }
+  else if(state=="desconectado")
+  {
+    if (process.platform !== 'win32') {  
+      appIcon.setImage(imageFolder + '/16x16 - 6.png');
+      appIcon.setPressedImage(imageFolder + '/16x16 - 6.png');
+    }
+    else
+      appIcon.setImage(imageFolder + '/16x16 - 6.png');
+  }
+  g_appState=state;
+}
+
+
+var g_running_remote_operations=[];
+var g_n_operaciones=0;//used to count operations made from previous empty queue
+
+function my_transactions_callback(event_id,aux_id1)
+{
+  if(event_id=="empty queue")
+  {
+    //g_running_remote_operations=false;
+    setAppState("actualizado");
+    
+    if(g_n_operaciones>0)
+    {
+      g_n_operaciones=0;
+      if (process.platform !== 'win32') 
+      {
+        
+        var notif = new window.Notification("Oficloud Sync status", {
+          body: "Folder synced",
+          icon: balloon_image,
+          silent: true // We'll play our own sound
+        });
+      }
+      else
+      {
+        appIcon.displayBalloon({
+                    
+                    title:"Oficloud Sync status",
+                    content: "Folder synced"
+                    }); 
+      }
+    }
+
+    //g_pending_operations=[];    
+  }
+  else
+  {
+    
+  }
+  //console.log("Transaction event: "+event_id+" "+aux_id1);
+}
+
+//var syncs=[{"dir":791,"path":"C:/Users/juanjo/Documents/cloud/trabajo/test2"},{"dir":7,"path":"C:/Users/juanjo/Documents/cloud/trabajo/test"}];
+//var syncs=[{"dir":7,"path":"C:/Users/juanjo/Documents/cloud/trabajo/test"}];
+/*if (process.platform === 'darwin') {
+  var syncs=[{"dir":791,"path":"/Users/juanjo/Documents/test2"},{"dir":2421,"path":"/Users/juanjo/Documents/shared1"}];
+}
+else{
+  var syncs=[{"dir":791,"path":"C:/Users/juanjo/Documents/cloud/trabajo/test2"},{"dir":2421,"path":"C:/Users/juanjo/Documents/cloud/trabajo/shared1"}];
+}*/
+
+
+function load_syncs_from_storage(user)
+{
+  for (i=0; i<=localStorage.length-1; i++)  
+  {  
+        var key = localStorage.key(i);  
+        if(key.substr(0,5)=="sync_")
+        {
+          var sync=JSON.parse(localStorage.getItem(key));
+          /*ops.push(op);*/
+          if(sync.user==user)
+            syncs.push(sync);
+        }
+  }
+}
+
+
+
+var files=[];
+
+function get_sync_path(dir)
+{
+  for(var i=0;i<syncs.length;i++)
+  {
+    if(syncs[i].dir==dir)
+      return syncs[i].path;
+  }
+  return "";
+}
+
+/*function read_file(dir,file)
+{
+  let filePath= dir+"/"+file;
+  var content = fs.readFileSync(filePath);
+  let blake2 = new BLAKE2s(32);
+  blake2.update(new Uint8Array(content));
+  let hash=blake2.hexDigest();
+
+  return hash;
+}*/
+
+/*function read_file2(path)
+{
+  let filePath= path;
+  var content = fs.readFileSync(filePath);
+  let blake2 = new BLAKE2s(32);
+  blake2.update(new Uint8Array(content));
+  let hash=blake2.hexDigest();
+
+  return hash;
+}*/
+
+/*function read_file2(path)
+{
+  let filePath= path;
+  
+  let blake2 = new BLAKE2s(32);
+
+  var fs = require('fs');
+  var fd=fs.openSync(filePath,'r');
+  var l;
+  var p=0;
+  var buf=new Buffer(16*2048);  
+  while((l=fs.readSync(fd,buf,0,buf.length,p))>0)
+  {
+    let buf2= buf.slice(0,l);
+    blake2.update(new Uint8Array(buf2));
+    p+=l;
+  }
+  fs.closeSync(fd);
+  
+  let hash=blake2.hexDigest();
+  
+  //console.log("HASH "+path+" -> "+hash);
+
+  return hash;
+}*/
+
+/*function read_file2(path)
+{
+  let filePath= path;
+  
+  //let blake2 = new BLAKE2s(32);
+  var crc = require('crc');
+
+  var fs = require('fs');
+  var fd=fs.openSync(filePath,'r');
+  var l;
+  var p=0;
+  var buf=new Buffer(16*2048);
+  var crcvalue;
+  while((l=fs.readSync(fd,buf,0,buf.length,p))>0)
+  {
+    let buf2= buf.slice(0,l)
+    crcvalue = crc.crc32(buf2);
+    //blake2.update(new Uint8Array(buf2));
+    p+=l;
+  }
+  fs.closeSync(fd);
+  
+  //let hash=blake2.hexDigest();
+  let hash=crcvalue.toString(16);
+  //console.log("HASH "+path+" -> "+hash);
+
+  return hash;
+}*/
+
+
+
+var excluded_files=["Thumbs.db",".DS_Store","Icon\r","Icon^M",".dropbox","desktop.ini"];
+
+function walkSync(dir, filelist, params) {
+  
+  
+  var files = fs.readdirSync(dir);
+  
+  
+  filelist = filelist || [];
+  var curdir=params.last_id;
+  var a=dir.split("/");
+  var name=a[a.length-1];
+  
+  {
+    var dirs={"id":curdir,"name":name,"path":dir,"subdirs":[]};
+    files.forEach(function(file) {
+      var path=dir + '/' + file;
+      let stats=fs.statSync(path);
+      if (stats.isDirectory() ) {
+        try
+        {
+          //var result1 = hidefile.isHiddenSync(path);
+          //if(!result1)
+          if(file.charAt(0)!='.')
+          {
+            params.last_id++;
+            //filelist.push({"id":params.last_id,"name":file,"type":"directory","dir":curdir});
+            subdirs=walkSync(path, filelist, params);
+            dirs.subdirs.push(subdirs);
+          }      
+        }
+        catch(e)
+        {
+
+        }        
+      }
+      else {
+        let filePath= dir+"/"+file;
+        
+        let hash="QUITADO";//read_file(dir,file);
+        //let hash=read_file(dir,file);
+
+        var result1 = false;//hidefile.isHiddenSync(filePath);
+        var result2 = junk.is(file);
+        var result3 = file.indexOf(".ofipart.")==0
+        if(!result1 && !result2 && !result3)
+        {
+          var filtered = excluded_files.filter(function(entry) { return entry === file; });
+          if(filtered.length==0)
+          {
+            var tipo=mime.lookup(filePath);
+            filelist.push({"origin":"disk","name":file,"path":filePath,"type":tipo,"size":stats.size,"mtime":stats.mtime,"hash":hash,"dir":curdir});
+          }
+        }
+      }
+    });
+    return(dirs);  
+  }
+  
+  
+};
+
+function walk(dir, filelist, params, dirs, pos, onEnd) 
+{
+  var files = fs.readdirSync(dir);
+  
+  
+  filelist = filelist || [];
+  var curdir=params.last_id;
+  var a=dir.split("/");
+  var name=a[a.length-1];
+  
+  {
+    if(pos==-1)
+    {
+      var newdirs={"id":curdir,"name":name,"path":dir,"subdirs":[]};
+      walk(dir, filelist, params, newdirs, 0, function(resdirs)
+      {                
+        newdirs=resdirs;
+        onEnd(newdirs);
+        
+      }
+      );
+      return;
+    }
+    else
+    //files.forEach(function(file) 
+    {
+      if(files.length==0)
+      {
+        onEnd(dirs);
+        return;
+      }
+      var file=files[pos];
+      var path=dir + '/' + file;
+      
+      let stats=fs.statSync(path);
+      if (stats.isDirectory() ) 
+      {
+        try
+        {
+          var newdirs={"id":curdir,"name":name,"path":path,"subdirs":[]};
+          
+          //var result1 = hidefile.isHiddenSync(path);
+          //if(!result1)
+          if(file.charAt(0)!='.')          
+          {
+            params.last_id++;
+            //filelist.push({"id":params.last_id,"name":file,"type":"directory","dir":curdir});
+            walk(path, filelist, params, newdirs, -1, function(resdirs)
+            {                
+              dirs.subdirs.push(resdirs);
+              //onEnd(newdirs);
+              
+            });
+            
+          }      
+        }
+        catch(e)
+        {
+          console.error(e);
+        }        
+      }
+      else 
+      {
+        let filePath= dir+"/"+file;
+        
+        let hash="QUITADO";//read_file(dir,file);
+        //let hash=read_file(dir,file);
+
+        var result1 = hidefile.isHiddenSync(filePath);
+        var result2 = junk.is(file);
+        if(!result1 && !result2)
+        {
+          var filtered = excluded_files.filter(function(entry) { return entry === file; });
+          if(filtered.length==0)
+          {
+            var tipo=mime.lookup(filePath);
+            filelist.push({"origin":"disk","name":file,"path":filePath,"type":tipo,"size":stats.size,"mtime":stats.mtime,"hash":hash,"dir":curdir});
+          }
+        }
+      }
+    }
+    if(pos>=0 && (pos+1)<files.length)
+    {
+      
+      walk(dir, filelist, params, dirs,pos+1, function(resdirs){
+        dirs=resdirs;
+        onEnd(dirs);
+      }
+      );
+    }
+    else
+      onEnd(dirs);
+  }
+  
+  
+};
+
+/*const cluster = require('cluster');
+const http = require('http');
+const numCPUs = require('os').cpus().length;
+
+if (cluster.isMaster) {
+  // Fork workers.
+ 
+  cluster.fork();
+ 
+
+  cluster.on('exit', (worker, code, signal) => {
+    console.log(`worker ${worker.process.pid} died`);
+  });
+} else {
+  // Workers can share any TCP connection
+  // In this case it is an HTTP server
+  http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end('hello world\n');
+  }).listen(8000);
+}*/
+
+
+/*function simulacro_digests(filelist)
+{
+  var start=new Date().getTime();
+  console.log("simulacro_digests start: "+start);
+  for(i=0;i<filelist.length;i++)
+  {
+    var f=filelist[i];
+    //var filtered = previous_filelist.filter(function(entry) { return entry.name == f.name && entry.path==f.path; });
+    //if(filtered.length>0)
+    let hash=read_file2_simulacro(f.path);
+  }
+  var end=new Date().getTime();
+  console.log("simulacro_digests end: "+end);
+  console.log("simulacro_digests total: "+(end-start)/1000+" seconds");
+}*/
+
+function simulacro2_digests(dir,filelist,previous_filelist,onEnd)
+{
+  var start=new Date().getTime();
+  console.log("simulacro_digests ("+dir+") start: "+start);
+  
+  var ii=0;
+  function next()
+  {
+    var f=filelist[ii];
+    var item=previous_filelist[f.path];
+    if(item)
+    {
+      //var item = filtered[0];
+      f.hash=item.hash;
+      ii++;
+      if(ii<filelist.length)
+      {
+        if(ii<5 || ii%1500)
+          next();
+        else{
+          setTimeout(next,100);          
+        }
+      }
+      else
+      {
+        var end=new Date().getTime();
+        console.log("simulacro_digests ("+dir+") end: "+end);
+        console.log("simulacro_digests ("+dir+") total: "+(end-start)/1000+" seconds");
+        onEnd();
+      }
+    }
+    else
+    {    
+    read_file6_simulacro(f.path,function (hash){
+      f.hash=hash;
+      previous_filelist[f.path]=f;
+      if(ii<filelist.length-1)
+      {
+        if(ii<5 || ii%1500)
+        {
+          ii++;
+          try{
+            next();
+          }
+          catch(e)
+          {
+            console.log("digest simulacro "+ii+": "+e);
+            setTimeout(next,100);
+            return;
+          }
+        }
+        //timeout para forzar poner a cero el call stack y evitar maximum call stack size exceeded
+        else{
+          setTimeout(next,100);
+          return;
+        }
+      }
+      else{
+        var end=new Date().getTime();
+        console.log("simulacro_digests ("+dir+") end: "+end);
+        console.log("simulacro_digests ("+dir+") total: "+(end-start)/1000+" seconds");
+        onEnd();
+      }
+    })
+    }
+  }
+  if(filelist.length>0)
+    next();
+  else{
+        var end=new Date().getTime();
+        console.log("simulacro_digests ("+dir+") end: "+end);
+        console.log("simulacro_digests ("+dir+") total: "+(end-start)/1000+" seconds");
+        onEnd();
+      }
+  
+  
+}
+
+function hacer_xor(s)
+{
+  var res=[0,0,0,0];
+  for(var i=0;i<s.length;i++)
+  {
+    res[i%4]=res[i%4]^s[i];
+  }
+  return res;
+}
+
+/*function read_file5_simulacro(path,onEnd)
+{
+  var CHUNK_SIZE = 32 * 1024, 
+    buffer = new Buffer(CHUNK_SIZE),
+    filePath = path;
+
+  let hasher= new JJSimpleHash();
+
+var p=0;
+fs.open(filePath, 'r', function(err, fd) {
+  if (err) throw err;
+  function readNextChunk() {
+    fs.read(fd, buffer, 0, CHUNK_SIZE, null, function(err, nread) {
+      if (err) throw err;
+
+      if (nread === 0) {
+        // done reading file, do any necessary finalization steps
+        fs.close(fd, function(err) {
+          if (err) throw err;
+        });
+
+        let hash=hasher.digest();
+        onEnd(hash);
+
+        return;
+      }
+
+      var data;
+      if (nread < CHUNK_SIZE)
+        data = buffer.slice(0, nread);
+      else
+        data = buffer;
+      
+      p+=nread;
+
+      // do something with `data`, then call `readNextChunk();`
+      hasher.update(new Uint8Array(data));
+      readNextChunk();
+    });
+  }
+  readNextChunk();
+});
+}*/
+
+
+function read_file6_simulacro(path,onEnd)
+{
+  
+  var filePath = path;
+  var buffer = new Buffer(CHUNK_SIZE);
+
+  var XXH=require("xxhashjs");
+
+  var H = XXH.h32( 0xABCD )
+  
+var i=0;
+let xor=[0,0,0,0];
+var p=0;
+fs.open(filePath, 'r', function(err, fd) {
+  if (err) throw err;
+  function readNextChunk() {
+    var cs=CHUNK_SIZE0;
+    if(i>=8)
+      cs=CHUNK_SIZE;
+    fs.read(fd, buffer, 0, cs, null, function(err, nread) {
+      if (err) throw err;
+
+      if (nread === 0) {
+        // done reading file, do any necessary finalization steps
+        fs.close(fd, function(err) {
+          if (err) throw err;
+        });
+
+        let hash=H.digest().toString(16);
+        onEnd(hash);
+
+        return;
+      }
+
+      var data;
+      if (nread < cs)
+        data = buffer.slice(0, nread);
+      else if (nread == CHUNK_SIZE0)
+        data = buffer.slice(0, CHUNK_SIZE0);
+      else
+        data = buffer;
+      
+      p+=nread;
+
+      // do something with `data`, then call `readNextChunk();`
+      if(!(i%20) || i<8)      
+      //if( i<8)      
+      //if(1)
+      {
+        H.update(data);
+      }
+      else{
+        /*let newxor=hacer_xor(data);
+        xor[0]= xor[0] ^ newxor[0];
+        xor[1]= xor[1] ^ newxor[1];
+        xor[2]= xor[2] ^ newxor[2];
+        xor[3]= xor[3] ^ newxor[3];*/
+      }
+      i++;
+      readNextChunk();
+    });
+  }
+  readNextChunk();
+});
+}
+
+
+/*function read_file2_simulacro(path)
+{
+  let filePath= path;
+  
+  //let blake2 = new BLAKE2s(32);
+  
+
+  var fs = require('fs');
+  var fd=fs.openSync(filePath,'r');
+  var l;
+  var p=0;
+  var buf=new Buffer(16*2048);  
+  var i=0;
+  let xor=[0,0,0,0];
+  while((l=fs.readSync(fd,buf,0,buf.length,p))>0)
+  {
+    let buf2= buf.slice(0,l)
+    if(!(i%10))
+    {
+      H.update(buf2);
+    }
+    else{
+    let newxor=hacer_xor(buf2);
+    xor[0]= xor[0] ^ newxor[0];
+    xor[1]= xor[1] ^ newxor[1];
+    xor[2]= xor[2] ^ newxor[2];
+    xor[3]= xor[3] ^ newxor[3];
+    }
+    p+=l;
+    i++;
+  }
+  fs.closeSync(fd);
+  
+  let hash=H.digest().toString(16);
+  
+  //console.log("HASH "+path+" -> "+hash);
+  //console.log("XOR "+path+" -> "+xor);
+
+  return hash;
+}*/
+
+/*function read_file3_simulacro(path,onEnd)
+{
+  var CHUNK_SIZE = 32 * 1024, // 10MB
+    buffer = new Buffer(CHUNK_SIZE),
+    filePath = path;
+
+  var XXH=require("xxhashjs");
+
+  var H = XXH.h32( 0xABCD )
+
+var p=0;
+fs.open(filePath, 'r', function(err, fd) {
+  if (err) throw err;
+  function readNextChunk() {
+    fs.read(fd, buffer, 0, CHUNK_SIZE, null, function(err, nread) {
+      if (err) throw err;
+
+      if (nread === 0) {
+        // done reading file, do any necessary finalization steps
+        
+
+        fs.close(fd, function(err) {
+          if (err) throw err;
+        });
+
+        let hash=H.digest().toString(16);
+        onEnd(hash);
+
+        return;
+      }
+
+      var data;
+      if (nread < CHUNK_SIZE)
+        data = buffer.slice(0, nread);
+      else
+        data = buffer;
+      
+      p+=nread;
+
+      // do something with `data`, then call `readNextChunk();`
+      H.update(data);
+      readNextChunk();
+    });
+  }
+  readNextChunk();
+});
+}*/
+
+/*function read_file4_simulacro(path,onEnd)
+{
+  var CHUNK_SIZE = 32 * 1024, // 10MB
+    buffer = new Buffer(CHUNK_SIZE),
+    filePath = path;
+
+  let blake2 = new BLAKE2s(32);
+
+var p=0;
+fs.open(filePath, 'r', function(err, fd) {
+  if (err) throw err;
+  function readNextChunk() {
+    fs.read(fd, buffer, 0, CHUNK_SIZE, null, function(err, nread) {
+      if (err) throw err;
+
+      if (nread === 0) {
+        // done reading file, do any necessary finalization steps
+        
+
+        fs.close(fd, function(err) {
+          if (err) throw err;
+        });
+
+        let hash=blake2.hexDigest();
+        onEnd(hash);
+
+        return;
+      }
+
+      var data;
+      if (nread < CHUNK_SIZE)
+        data = buffer.slice(0, nread);
+      else
+        data = buffer;
+      
+      p+=nread;
+
+      // do something with `data`, then call `readNextChunk();`
+      blake2.update(new Uint8Array(data));
+      readNextChunk();
+    });
+  }
+  readNextChunk();
+});
+}*/
+
+/*function completar_digests(filelist,previous_filelist)
+{
+  
+  for(i=0;i<filelist.length;i++)
+  {
+    var f=filelist[i];
+    //var filtered = previous_filelist.filter(function(entry) { return entry.name == f.name && entry.path==f.path; });
+    //if(filtered.length>0)
+    var item=previous_filelist[f.path];
+    if(item)
+    {
+      //var item = filtered[0];
+      f.hash=item.hash;
+    }
+    else
+    {
+      let hash=read_file2(f.path);
+      f.hash=hash;
+      previous_filelist[f.path]=f;
+    }
+  }
+}*/
+
+function delete_file_from_previous_filelist(path,dir) //to force getting new digest, called when file is modified
+{
+  delete g_previous_filelist[dir][path];
+  /*for(i=0;i<g_previous_filelist[dir].length;i++)
+  {
+    if(path==g_previous_filelist[dir][i].path)
+    {
+      g_previous_filelist[dir].splice(i,1);
+    }
+  }*/
+}
+
+var g_previous_filelist=[];
+
+    function check_syncs_local(path,dir,on_complete)
+    {
+      var filelist=[];      
+      var params={"last_id":1};
+      var start=new Date().getTime();
+      console.log("walkSync ("+dir+") start: "+start);
+      var resdirs=walkSync(path,filelist,params);
+      var end=new Date().getTime();
+      console.log("walkSync ("+dir+") end: "+end);
+      console.log("walkSync ("+dir+") total: "+(end-start)/1000+" seconds");
+
+      /*simulacro2_digests(filelist,g_previous_filelist[dir],function(){
+        on_complete(filelist,resdirs);
+      });*/
+
+      /*var dirs=[];
+      walk(path,filelist,params,dirs,-1,function(resdirs)*/
+      {
+        //completar_digests(filelist,g_previous_filelist[dir]);
+        //g_previous_filelist[dir]=filelist.slice();
+
+        simulacro2_digests(dir,filelist,g_previous_filelist[dir],function(){
+          on_complete(filelist,resdirs);
+        });
+
+        /*var remote_operations=[];
+        on_complete(filelist,resdirs);*/
+      }
+      //);
+    }
+
+    function cancel_current_operation_if_needed(sync_folder,operations)
+    {
+      //!!esto es asincrono. Puede ejecutarse despues de llamar a la funcion (y el codigo que le sigue)
+        document.getElementById('targetFrame').contentWindow.get_current_transaction(function (curop){
+            var cancelar=true;
+            if(curop.sync_folder==sync_folder && (curop.op=="download" || curop.op=="upload"))
+            {
+              for(var i=0;i<operations.length;i++)
+              {
+                var op=operations[i];
+                if(op.sync_folder!=curop.sync_folder)
+                {
+                  cancelar=false;
+                  break;
+                }
+                else if(op.op==curop.op && op.name==curop.filename && op.dir==curop.dir)
+                {
+                  cancelar=false;
+                  op.estado="cancelada";
+                }
+              }
+              if(cancelar)
+              {
+                document.getElementById('targetFrame').contentWindow.cancel_current_transaction();
+              }
+            }
+        },function (){
+
+        });
+        
+    }
+
+    function push_current_pending_transaction_if_needed(sync_folder)
+    {
+      //!!esto es asincrono. Puede ejecutarse despues de llamar a la funcion (y el codigo que le sigue)
+      document.getElementById('targetFrame').contentWindow.get_current_transaction(function (curop){
+        if(curop.op=="download" || curop.op=="upload")
+        {
+          var op={"type":"remote","op":curop.op,"name":curop.filename,"size":curop.filesize,"type":curop.filetype,"path":curop.path,"dir":curop.dir,
+            "id":curop.fileid};
+          g_pending_operations[sync_folder].set(curop.op+"-"+curop.dir+"-"+curop.name+"-"+curop.path,op);
+          //g_pending_operations[sync_folder].push(op);
+        }
+      },function (){
+
+      });
+    }
+
+    function clear_pending_transactions(sync_folder)
+    {
+        document.getElementById('targetFrame').contentWindow.clear_pending_transactions(sync_folder);    
+    }
+
+    /*function cancel_transactions(desc)
+    {
+        document.getElementById('targetFrame').contentWindow.cancel_transactions(desc);    
+    }*/
+    
+    function subir_fichero(sync_folder,path,directorio,filetype,filesize,myOnEndHandler)
+    {
+      var buf=new Buffer(1000000);
+      function get_blob_from_path(path,start,stop)
+      {
+        //!!falta detectar error
+        //var blob = new window.Blob([new Uint8Array(fs.readFileSync(path))]);
+        let blob=null;
+        try{
+          //blob = new window.Blob([Uint8Array.from(fs.readFileSync(path)).buffer]);
+          //!!ARREGLAR ESTO, CON FICHEROS GRANDES SE CUELGA!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+          //blob = new window.Blob([new Uint8Array(fs.readFileSync(path))],{type:filetype});
+          
+          var fd=fs.openSync(path,'r');
+          var l=fs.readSync(fd,buf,0,stop-start,start);
+          var buf2= buf.slice(0,l)
+          fs.closeSync(fd);
+          blob=new window.Blob([new Uint8Array(buf2)]);
+          buf2=null;
+  
+        }
+        catch(e)
+        {
+          return null;
+        }
+        return blob;
+      }
+      var filename = path.replace(/^.*[\\\/]/, '');
+      //var stats=fs.statSync(path);
+      //var filesize=stats.size;
+      /*var filesize=filesize;
+      var filetype=filetype;*/
+      document.getElementById('targetFrame').contentWindow.subir_fichero(sync_folder,filename,filesize,
+        filetype,get_blob_from_path,path,directorio,myOnEndHandler,g_client_id);
+                
+    }
+
+    function mover_fichero(sync_folder,nombre,directorio,filesize,filetype,nuevo_directorio,eventF)
+    {
+        document.getElementById('targetFrame').contentWindow.encolar_mover_fichero_por_nombre(sync_folder,nombre,directorio,
+          filesize,filetype,nuevo_directorio,eventF,g_client_id);    
+    }
+
+    function borrar_fichero(sync_folder,nombre,filetype,filesize,directorio,eventF)
+    {
+        //var filename = path.replace(/^.*[\\\/]/, '');
+        document.getElementById('targetFrame').contentWindow.encolar_borrar_fichero_por_nombre(sync_folder,nombre,filetype,
+          filesize,directorio,eventF,g_client_id);    
+    }
+
+    function borrar_directorio(sync_folder,id,nombre,eventF)
+    {        
+        document.getElementById('targetFrame').contentWindow.encolar_borrar_fichero(sync_folder,id,"directory",nombre,
+          eventF,g_client_id);    
+    }
+
+    function crear_directorio(sync_folder,nombre,directorio,eventF)
+    {
+        document.getElementById('targetFrame').contentWindow.encolar_crear_directorio(sync_folder,nombre,directorio,
+          eventF,g_client_id);    
+    }
+
+    function toBuffer(ab) {
+      var buffer = new Buffer(ab.byteLength);
+      var view = new Uint8Array(ab);
+      for (var i = 0; i < buffer.length; ++i) {
+        buffer[i] = view[i];
+      }
+      return buffer;
+    }
+
+
+    function bajar_fichero(sync_folder,path,filedir,fileid,filename,filesize,filetype,onFinish)
+    {
+        /*var mysave = function (adata)
+        {
+          for(var i=0;i<adata.length;i++)
+          {
+           var data=adata[i];
+           var blob = toBuffer(data);//new Blob([data], {type: filetype});
+           try
+           {
+             if(i==0)
+              fs.writeFileSync(path, blob);
+            else
+              fs.appendFileSync(path, blob);
+           }
+           catch(e)
+           {
+
+           }
+          }
+        };*/
+        var apath=path.split("/");
+        apath[apath.length-1]=".ofipart."+apath[apath.length-1]+".data";
+        var partpath=apath.join("/");
+        var firstchunk=0;
+
+        if( fs.existsSync(partpath) ) {
+          var stats=fs.statSync(partpath);
+          var size=stats.size;
+
+          
+          if(size>8*CHUNK_SIZE0)
+          {
+            firstchunk=8+parseInt((size+8*CHUNK_SIZE0)/CHUNK_SIZE);
+          }
+        }
+
+        var nretries=0;
+        var mysave = function (data,chunk,onerror,onsuccess)
+        {
+          if(data==null)
+          {
+              nretries=0;
+              if(onsuccess)
+                onsuccess();
+              return;
+          }
+          var blob = toBuffer(data);
+          //var blob = new Buffer(new Uint8Array(data));
+           function escribir(path,data,chunk)
+           {
+             if(chunk==0)
+              fs.writeFileSync(path, blob);
+             else
+              fs.appendFileSync(path, blob);
+           }
+
+           try
+           {
+             escribir(partpath,blob,chunk);
+             nretries=0;
+             if(onsuccess)
+                onsuccess();
+           }
+           catch(e)
+           {
+             nretries++;
+             if(nretries<5)
+              escribir(partpath,blob,chunk);
+             else
+              onerror(e);
+           }
+        };
+        var filename = path.replace(/^.*[\\\/]/, '');
+        document.getElementById('targetFrame').contentWindow.load_it(sync_folder,filedir,fileid,filename,filesize,
+          filetype,null,function (id,params){
+            //onFinish
+            if(id=="error")
+            {
+              onFinish("error",params);
+            }
+
+            if(id!="download")
+            {
+              return;
+            }
+
+            var apath=path.split("/");
+            apath[apath.length-1]=".ofipart."+apath[apath.length-1]+".data";
+            var partpath=apath.join("/");
+            var count=0;
+            function renombrar(partpath,path,onEnd)
+            {
+              try{
+                fs.renameSync(partpath,path);
+                onEnd();
+              }
+              catch(e){
+                count++;
+                if(count<5)
+                  renombrar(partpath,path,onEnd);
+                else{
+                  var params={"message":"File is locked"};
+                  onFinish("error",params);
+                }
+              }
+            }
+            renombrar(partpath,path,function (){
+              onFinish(id,params)
+            });
+            
+          },mysave,firstchunk,g_client_id);
+    }
+
+    function renombrar_fichero(sync_folder,id,newname,filetype,filesize,onFinish)
+    {
+      document.getElementById('targetFrame').contentWindow.encolar_renombrar_fichero(sync_folder,id,newname,filetype,
+        filesize,onFinish,g_client_id);
+    } 
+
+    var g_no_activity=[];//true;
+    var timeout_reset_activity=[];
+    var timeout_prestart_sync2=[];
+    var time_last_prestart=[];
+    function prestart_sync(dir)
+    {
+      g_no_activity[dir]=false;
+      if(timeout_prestart_sync2[dir]!=null)
+        clearTimeout(timeout_prestart_sync2[dir]);
+      timeout_prestart_sync2[dir]=setTimeout("prestart_sync2("+dir+")",3000);
+      if(timeout_reset_activity[dir]!=null)
+        clearTimeout(timeout_reset_activity[dir]);
+      timeout_reset_activity[dir]=setTimeout("reset_activity("+dir+")",3000);
+    }
+
+    function reset_activity(dir)
+    {
+      g_no_activity[dir]=true;
+    }
+
+    var g_timeout_prestart=[];//null;
+    function prestart_sync2(dir)
+    {
+      if(g_no_activity[dir])
+      {
+        g_timeout_prestart[dir]=null;
+        start_sync(dir);
+      }
+      else
+      {
+        clearTimeout(g_timeout_prestart[dir]);
+        if(g_pending_operations[dir])
+          var spe=g_pending_operations[dir].size;
+        if(!g_pending_operations[dir] || g_pending_operations[dir].size<1000)
+          g_timeout_prestart[dir]=setTimeout("prestart_sync2("+dir+")",4000);
+        else if(g_pending_operations[dir].size<5000)
+          g_timeout_prestart[dir]=setTimeout("prestart_sync2("+dir+")",12000);
+        else
+          g_timeout_prestart[dir]=setTimeout("prestart_sync2("+dir+")",24000);
+      }
+    }
+
+    /*var g_pending_syncs=[];
+    function prestart_sync(dir)
+    {
+      g_pending_syncs[dir]=1;
+    }
+
+    function run_syncs(f_end)
+    {
+      for (var dir in g_pending_syncs)
+      {
+        start_sync(dir);
+        delete g_pending_syncs[dir];
+      }
+      f_end();
+    }*/
+
+    //var g_timeout_start_sync=[];
+    function start_sync(dir)
+    {
+      /*if(g_running_remote_operations)
+      {
+        clearTimeout(g_timeout_start_sync);
+        g_timeout_start_sync=setTimeout("start_sync("+dir+")",1000);
+        return;
+      } */     
+      //g_timeout_start_sync[dir]=null;
+      console.log("sync "+dir+": "+g_last_update_date[dir]);
+      document.getElementById('targetFrame').contentWindow.start_syncing_folder(dir,g_last_update_date[dir]);
+      
+      setAppState("inisync");
+    }
+
+    var g_last_check_date="";
+    var g_last_update_date=[];
+    var g_running_check=false;
+
+function random_string(l)
+  {
+  	var array = new Uint32Array(l);
+  	window.crypto.getRandomValues(array);
+  	var pass='';
+  	var saux="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  	for (var i = 0; i < array.length; i++) {
+  	    pass+=saux[array[i]%saux.length];
+  	}	
+  	return pass;
+  }
+  
+    var g_client_id=localStorage.getItem("client_id");
+    
+
+    function check_sync_remote()
+    {
+      if(g_parar_sync)
+      {
+        
+        for (var key in watches) 
+        {
+          var w=watches[key];
+          w.close();
+        }
+        syncs=[];
+        g_f_parar_sync();
+        g_parar_sync=false;
+
+        return;
+      }
+
+      if(g_running_check)
+      {
+        setTimeout("check_sync_remote()",1000);
+        return;
+      }
+      g_running_check=true;
+      console.log("check: "+g_last_check_date);
+      var folders=[];
+      for(var i=0;i<syncs.length;i++)
+      {
+        folders[folders.length]=syncs[i].dir;
+      }
+      document.getElementById('targetFrame').contentWindow.check_synced_folders(folders,g_last_check_date);
+
+      setTimeout("check_sync_remote()",4000);
+    }
+
+    /*var chokidar = require('chokidar');
+
+    var watcher;
+
+    function watch(dir,path)
+    {
+      watcher = chokidar.watch(path, {ignored: /^\./, persistent: true});
+      watcher
+        .on('add', function(path) {console.log('File', path, 'has been added'); prestart_sync(dir);})
+        .on('change', function(path) {console.log('File', path, 'has been changed'); prestart_sync(dir);})
+        .on('unlink', function(path) {console.log('File', path, 'has been removed');prestart_sync(dir)})
+        .on('error', function(error) {console.error('Error happened', error);})
+        .on('addDir', function(path) { console.log(`Directory ${path} has been added`);prestart_sync(dir);})
+        .on('unlinkDir', function(path) { console.log(`Directory ${path} has been removed`);prestart_sync(dir);})
+        .on('error', error => console.log(`Watcher error: ${error}`))
+        .on('ready', () => console.log('Initial scan complete. Ready for changes'))
+        .on('raw', (event, path, details) => {
+          console.log('Raw event info:', event, path, details);
+        });
+    }*/
+
+
+    var watches=[];
+
+    function watch(dir,path)
+    {
+        
+          var w=fs.watch(path, { persistent: true,recursive: true }, function (event, fileName) {
+          if(event=="change")
+          {
+            //console.log("=========> Event: " + event +" " + fileName);
+            if(fileName!=null)
+            {
+              fileName=path + '/' + fileName;
+              fileName = fileName.replace(/\\/g, '/');
+              if (!fs.statSync(fileName).isDirectory()) {
+                delete_file_from_previous_filelist(fileName,dir);              
+              }
+            }
+          }
+          else
+          {
+            //console.log("Event: " + event +" " + fileName);
+          }
+          prestart_sync(dir);
+        });
+        watches[dir]=w;
+
+      /*hound = require('hound')
+      watcher = hound.watch(path);
+
+      watcher.on('create', function(file, stats) {
+        console.log(file + ' was created');
+        prestart_sync(dir);
+      })
+      watcher.on('change', function(file, stats) {
+        console.log(file + ' was changed');
+        prestart_sync(dir);
+      })
+      watcher.on('delete', function(file) {
+        console.log(file + ' was deleted');
+        prestart_sync(dir);
+      })*/
+
+      /*function walkdirSync(dir,path) {
+        var fs = fs || require('fs'),
+            files = fs.readdirSync(path);
+        
+        
+        var a=path.split("/");
+        var name=a[a.length-1];        
+        files.forEach(function(file) {
+          if (fs.statSync(path + '/' + file).isDirectory()) {
+            walkdirSync(dir,path + '/' + file);
+          }
+          else
+          {
+            fs.watch(path + '/' + file, { persistent: true }, function (event, fileName) {
+              console.log("Eveeent: " + event);
+              console.log(fileName + "\n");
+              prestart_sync(dir);
+            });
+
+          }
+        });  
+      };
+
+      walkdirSync(dir,path);*/
+
+      /*var watchr = require('watchr')
+      watchr.watch({
+        paths: [path],
+        listeners: {
+          log: function (logLevel) {
+            console.log('a log message occured:', arguments)
+          },
+          error: function (err) {
+            console.log('an error occured:', err)
+          },
+          watching: function (err, watcherInstance, isWatching){
+            if (err) {
+                console.log("watching the path " + watcherInstance.path + " failed with error", err)
+            } else {
+                console.log("watching the path " + watcherInstance.path + " completed")
+            }
+          },
+          change: function(changeType, filePath, fileCurrentStat, filePreviousStat){
+            console.log('a change event occured:', arguments);
+            prestart_sync(dir);
+          }
+        },
+        next: function(err, watchers){
+          if (err) {
+            return console.log("watching everything failed with error", err)
+          } else {
+            console.log('watching everything completed', watchers)
+          }
+
+          // Close watchers after 60 seconds
+          setTimeout(function () {
+            console.log('Stop watching our paths')
+            for ( var i = 0; i < watchers.length; i++ ) {
+                watchers[i].close()
+            }
+          }, 60 * 1000)
+        }
+      })*/
+    }
+
+function select_folder(ondone)
+{  
+  const {dialog} = require('electron').remote;
+
+  var path = dialog.showOpenDialog({
+    properties: ['openDirectory']
+  },function(filenames){
+    ondone(filenames);
+  });
+}
+
+</script>
+ </body>
+</html>

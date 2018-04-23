@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+ <head>
+
+ <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+ <title>Oficloud Sync</title>
+
+<style>
+     #initializing
+    {
+      
+      position:fixed;
+      left:0px;
+      right:0px;
+      top:0px;
+      bottom:0px;
+      background:#fff;
+      z-index:900;
+      color:#007;
+    }
+
+    #initializing-container
+    {
+      position:absolute;
+      top:50%;
+      margin-top:-190px;
+      left:0;
+      width:100%;
+    }
+
+    #initializing-message
+    {
+      width:400px;
+      margin-left:auto;
+      margin-right:auto;
+      height:100px;
+      font-family: 'Source Sans Pro', sans-serif;
+      font-size: 24px;      
+    }
+
+ </style>
+
+ </head>
+ <body>
+
+ <div id="initializing">
+   <div id="initializing-container">
+      <div id="initializing-message">
+        <img src="01.gif" >
+        <span id="initializing-text" style="position:relative; "><br>
+          Checking for updates ... Please wait<br>
+          <div id="error" style="color:red"></div>
+        </span>
+        </div>
+   </div>
+ </div>
+   
+     <script>
+       const {remote} = require('electron');
+
+        if(remote.getGlobal('sharedObj').error!="")
+          document.getElementById("error").innerHTML=remote.getGlobal('sharedObj').error;
+     </script>
+
+ </body>
+</html>

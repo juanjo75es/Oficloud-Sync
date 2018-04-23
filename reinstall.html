@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+ <head>
+
+ <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+ <title>Oficloud Sync</title>
+ </head>
+ <body>
+     A new version is available. Please install it from <a id="l" href="javascript:go()">here</a>.
+
+<script>
+
+const {remote} = require('electron');
+const app=remote.app;
+
+var win = remote.getCurrentWindow();
+
+function go()
+{
+    require('electron').shell.openExternal(remote.getGlobal('sharedObj').url);
+}
+
+
+ 
+</script>
+ </body>
+</html>

@@ -107,7 +107,7 @@
 
 }*/
 
-var g_server_url="https://storage.cloudspace.com.my/client/";
+var g_server_url="https://www.oficloud.com/client/";
 
 var pjson = require('./package.json');
 
@@ -1287,7 +1287,7 @@ var g_login=false;
 function receiveMessage(event)
 {
   var origin = event.origin || event.originalEvent.origin; // For Chrome, the origin property is in the event.originalEvent object.
-  if (origin !== "https://storage.cloudspace.com.my")
+  if (origin !== "https://www.oficloud.com")
     return;
   var data=event.data;
   //console.log(JSON.stringify(data));

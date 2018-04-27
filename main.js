@@ -28,7 +28,7 @@ function update_app(version)
         protocol: 'file',
         slashes: true
       }));
-    request("http://storage.cloudspace.com.my/get_updates.php?os=win&version="+version, function (error, response, body) 
+    request("http://www.oficloud.com/get_updates.php?os=win&version="+version, function (error, response, body) 
     {       
       if (!error && response.statusCode == 200) 
       {

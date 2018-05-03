@@ -442,11 +442,11 @@ var appIcon;
   //if (process.platform == 'darwin') 
   else
   {  
-    trayImage = imageFolder + '/16x16 - 1.png';
+    trayImage = imageFolder + '/32x32 - 1.png';
   }
   appIcon = new Tray(trayImage)
   if (process.platform === "darwin") {  
-    appIcon.setPressedImage(imageFolder + '/16x16 - 1.png');
+    appIcon.setPressedImage(imageFolder + '/32x32 - 1.png');
   }
 
   imageFolder=imageFolder.replaceAll("\\","/");
@@ -2742,11 +2742,11 @@ function setAppState(state)
   }*/
   if(state=="actualizado")
   {
-    //console.log("setIcon: "+imageFolder + '/16x16 - 3.png');
+    //console.log("setIcon: "+imageFolder + '/32x32 - 3.png');
     if (process.platform !== 'win32') {  
-      //console.log("setIcon2: "+imageFolder + '/16x16 - 3.png');
-      appIcon.setImage(imageFolder + '/16x16 - 3.png');
-      //appIcon.setPressedImage(imageFolder + '/16x16 - 3.png');
+      //console.log("setIcon2: "+imageFolder + '/32x32 - 3.png');
+      appIcon.setImage(imageFolder + '/32x32 - 3.png');
+      //appIcon.setPressedImage(imageFolder + '/32x32 - 3.png');
     }
     else
       appIcon.setImage(imageFolder + '/16x16 - 3.png');
@@ -2755,17 +2755,17 @@ function setAppState(state)
   {
     //aparentemente esto da una excepcion si se pone el mismo icono que ya esta puesto
     if (process.platform !== 'win32') {  
-      appIcon.setImage(imageFolder + '/16x16 - 1.png');
-      //appIcon.setPressedImage(imageFolder + '/16x16 - 1.png');
+      appIcon.setImage(imageFolder + '/32x32 - 1.png');
+      //appIcon.setPressedImage(imageFolder + '/32x32 - 1.png');
     }
     else
-      appIcon.setImage(imageFolder + '/48x48 - 1.png');
+      appIcon.setImage(imageFolder + '/16x16 - 1.png');
   }
   else if(state=="desconectado")
   {
     if (process.platform !== 'win32') {  
-      appIcon.setImage(imageFolder + '/16x16 - 6.png');
-      //appIcon.setPressedImage(imageFolder + '/16x16 - 6.png');
+      appIcon.setImage(imageFolder + '/32x32 - 6.png');
+      //appIcon.setPressedImage(imageFolder + '/32x32 - 6.png');
     }
     else
       appIcon.setImage(imageFolder + '/16x16 - 6.png');

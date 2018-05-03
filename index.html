@@ -2746,7 +2746,7 @@ function setAppState(state)
     if (process.platform !== 'win32') {  
       //console.log("setIcon2: "+imageFolder + '/16x16 - 3.png');
       appIcon.setImage(imageFolder + '/16x16 - 3.png');
-      appIcon.setPressedImage(imageFolder + '/16x16 - 3.png');
+      //appIcon.setPressedImage(imageFolder + '/16x16 - 3.png');
     }
     else
       appIcon.setImage(imageFolder + '/16x16 - 3.png');
@@ -2756,7 +2756,7 @@ function setAppState(state)
     //aparentemente esto da una excepcion si se pone el mismo icono que ya esta puesto
     if (process.platform !== 'win32') {  
       appIcon.setImage(imageFolder + '/16x16 - 1.png');
-      appIcon.setPressedImage(imageFolder + '/16x16 - 1.png');
+      //appIcon.setPressedImage(imageFolder + '/16x16 - 1.png');
     }
     else
       appIcon.setImage(imageFolder + '/48x48 - 1.png');
@@ -2765,7 +2765,7 @@ function setAppState(state)
   {
     if (process.platform !== 'win32') {  
       appIcon.setImage(imageFolder + '/16x16 - 6.png');
-      appIcon.setPressedImage(imageFolder + '/16x16 - 6.png');
+      //appIcon.setPressedImage(imageFolder + '/16x16 - 6.png');
     }
     else
       appIcon.setImage(imageFolder + '/16x16 - 6.png');

@@ -107,7 +107,7 @@
 
 }*/
 
-var g_server_url="https://www.oficloud.com/client/";
+var g_server_url="https://www.oficloud.com/clientdev/";
 
 var pjson = require('./package.json');
 
@@ -779,7 +779,7 @@ function push_operation(operations,obj)
   return g_next_operation_id-1;
 }
 
-function recorrido_local(sync_folder,path,remotedir_id,localdir_id,localdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+function recorrido_local(synctipo,sync_folder,path,remotedir_id,localdir_id,localdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
   dirmatch_table_remote)
 {
   operation=operations || [];
@@ -791,46 +791,70 @@ function recorrido_local(sync_folder,path,remotedir_id,localdir_id,localdirs,rem
       {
         var item = filtered[0];
         item.local_id=localdir.id;
-        recorrido_local(sync_folder,path,item.id,localdir.id,localdir.subdirs,item.subdirs,remote_operations,operations,dirmatch_table_local,
+        recorrido_local(synctipo,sync_folder,path,item.id,localdir.id,localdir.subdirs,item.subdirs,remote_operations,operations,dirmatch_table_local,
           dirmatch_table_remote);
       }
       else{
-        //directorio no existe en remoto
-        //!!hay que mirar primero si se ha borrado en remoto y si es antes de ultima actualizacion -> para decidir que hacer
-        var remop={};
-        if(!check_remote_operations(remote_operations,{"typecode":"delete_dir","auxname":localdir.name,"auxid":remotedir_id},remop))
+        if(synctipo=="default")
         {
-          //no ha sido borrado en remoto
-          if(check_remote_operations(remote_operations,{"typecode":"dir_rename","name":localdir.name,"dir":remotedir_id}))
+          //directorio no existe en remoto
+          //!!hay que mirar primero si se ha borrado en remoto y si es antes de ultima actualizacion -> para decidir que hacer
+          var remop={};
+          if(!check_remote_operations(remote_operations,{"typecode":"delete_dir","auxname":localdir.name,"auxid":remotedir_id},remop))
           {
-            //ha sido renombrado en remoto, por lo tanto no hacemos nada aqui y recorrido_remoto y alo detectara
-            push_operation(operations,{"sync_folder":sync_folder,"type":"noop"});
+            //no ha sido borrado en remoto
+            if(check_remote_operations(remote_operations,{"typecode":"dir_rename","name":localdir.name,"dir":remotedir_id}))
+            {
+              //ha sido renombrado en remoto, por lo tanto no hacemos nada aqui y recorrido_remoto y alo detectara
+              push_operation(operations,{"sync_folder":sync_folder,"type":"noop"});
+            }
+            else if(check_remote_operations(remote_operations,{"typecode":"movedir","name":localdir.name,"dir":remotedir_id}))
+              push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"deletedir","id":localdir.id,"path":localdir.path,"parent":localdir_id,"name":localdir.name});
+            else
+            {
+              push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"createdir","name":localdir.name,"parent":remotedir_id,"localid":localdir.id});
+            }
+            recorrido_local(synctipo,sync_folder,path,-1,localdir.id,localdir.subdirs,[],remote_operations,operations,dirmatch_table_local,
+              dirmatch_table_remote);
           }
-          else if(check_remote_operations(remote_operations,{"typecode":"movedir","name":localdir.name,"dir":remotedir_id}))
-            push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"deletedir","id":localdir.id,"path":localdir.path,"parent":localdir_id,"name":localdir.name});
           else
           {
-            push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"createdir","name":localdir.name,"parent":remotedir_id,"localid":localdir.id});
-          }
-          recorrido_local(sync_folder,path,-1,localdir.id,localdir.subdirs,[],remote_operations,operations,dirmatch_table_local,
-            dirmatch_table_remote);
+            push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"deletedir","id":localdir.id,"path":localdir.path,"parent":localdir_id,"name":localdir.name});
+            dirmatch_table_local[localdir.id]=remop.params.id;
+            dirmatch_table_remote[remop.params.id]=localdir.id;
+            recorrido_local(synctipo,sync_folder,path,remop.params.id,localdir.id,localdir.subdirs,[],remote_operations,operations,dirmatch_table_local,
+              dirmatch_table_remote);
+          }  
         }
-        else
+        
+        if(synctipo=="local-master")
         {
-          push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"deletedir","id":localdir.id,"path":localdir.path,"parent":localdir_id,"name":localdir.name});
-          dirmatch_table_local[localdir.id]=remop.params.id;
-          dirmatch_table_remote[remop.params.id]=localdir.id;
-          recorrido_local(sync_folder,path,remop.params.id,localdir.id,localdir.subdirs,[],remote_operations,operations,dirmatch_table_local,
-            dirmatch_table_remote);
+          //directorio no existe en remoto
+          //!!hay que mirar primero si se ha borrado en remoto y si es antes de ultima actualizacion -> para decidir que hacer
+          var remop={};
+          {
+            //no ha sido borrado en remoto
+            if(check_remote_operations(remote_operations,{"typecode":"dir_rename","name":localdir.name,"dir":remotedir_id}))
+            {
+              //ha sido renombrado en remoto, por lo tanto no hacemos nada aqui y recorrido_remoto y alo detectara
+              push_operation(operations,{"sync_folder":sync_folder,"type":"noop"});
+            }
+            else
+            {
+              push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"createdir","name":localdir.name,"parent":remotedir_id,"localid":localdir.id});
+            }
+            recorrido_local(synctipo,sync_folder,path,-1,localdir.id,localdir.subdirs,[],remote_operations,operations,dirmatch_table_local,
+              dirmatch_table_remote);
+          }
         }
-      
+
       }
     }
   });
 }
 
 var g_remotedir_path_table=[];
-function recorrido_remoto(sync_folder,path,remotepath,remotedir_id,localdir_id,localdirs,remotedirs,remote_operations,operations,dirmatch_table_local
+function recorrido_remoto(synctipo,sync_folder,path,remotepath,remotedir_id,localdir_id,localdirs,remotedirs,remote_operations,operations,dirmatch_table_local
   ,dirmatch_table_remote)
 {
   
@@ -844,31 +868,42 @@ function recorrido_remoto(sync_folder,path,remotepath,remotedir_id,localdir_id,l
       item.remote_id=remotedir.id;
       dirmatch_table_local[item.id]=remotedir.id;
       dirmatch_table_remote[remotedir.id]=item.id;
-      recorrido_remoto(sync_folder,item.path,remotepath+"/"+remotedir.name,remotedir.id,item.id,item.subdirs,remotedir.subdirs,remote_operations,operations,dirmatch_table_local
+      recorrido_remoto(synctipo,sync_folder,item.path,remotepath+"/"+remotedir.name,remotedir.id,item.id,item.subdirs,remotedir.subdirs,remote_operations,operations,dirmatch_table_local
         ,dirmatch_table_remote);
     }
     else{      
-      if(!check_remote_operations(remote_operations,{"typecode":"newdir","auxname":remotedir.name,"auxid":remotedir_id}))
+      if(synctipo=="default")
       {
-            let rop={};
-            if(check_remote_operations(remote_operations,{"typecode":"dir_rename","newname":remotedir.name,"id":remotedir.id},rop))
-            {              
-              var path1=path+"/"+rop.params.name;
-              var path2=path+"/"+remotedir.name;
-              push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"renamedir","id":remotedir.id,
-                  "path":path1,"newpath":path2});
-            }
-            else if(check_remote_operations(remote_operations,{"typecode":"movedir","name":remotedir.name,"dir":remotedir_id}))
-              push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"createdir","name":remotedir.name,"path":path,"parent":localdir_id});
-            else
-             push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"deletedir","id":remotedir.id,"name":remotedir.name,"parent":remotedir_id});
-      }       
-      else
-      {
-        var newpath=path
-        push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"createdir","name":remotedir.name,"path":path,"parent":localdir_id});
+        if(!check_remote_operations(remote_operations,{"typecode":"newdir","auxname":remotedir.name,"auxid":remotedir_id}))
+        {
+              let rop={};
+              if(check_remote_operations(remote_operations,{"typecode":"dir_rename","newname":remotedir.name,"id":remotedir.id},rop))
+              {              
+                var path1=path+"/"+rop.params.name;
+                var path2=path+"/"+remotedir.name;
+                push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"renamedir","id":remotedir.id,
+                    "path":path1,"newpath":path2});
+              }
+              else if(check_remote_operations(remote_operations,{"typecode":"movedir","name":remotedir.name,"dir":remotedir_id}))
+                push_operation(operations,{"sync_folder":sync_folder,"type":"local","op":"createdir","name":remotedir.name,"path":path,"parent":localdir_id});
+              else
+              push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"deletedir","id":remotedir.id,"name":remotedir.name,"parent":remotedir_id});
+        }       
+        else
+        {
+          var newpath=path
+          push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"deletedir","id":remotedir.id,"name":remotedir.name,"parent":remotedir_id});
+        }
+        recorrido_remoto(synctipo,sync_folder,path+"/"+remotedir.name,remotepath+"/"+remotedir.name,remotedir.id,-1,[],remotedir.subdirs,remote_operations,operations,dirmatch_table_local,dirmatch_table_remote);
+
       }
-      recorrido_remoto(sync_folder,path+"/"+remotedir.name,remotepath+"/"+remotedir.name,remotedir.id,-1,[],remotedir.subdirs,remote_operations,operations,dirmatch_table_local,dirmatch_table_remote);
+      else if(synctipo=="local-master")
+      {
+        {
+              push_operation(operations,{"sync_folder":sync_folder,"type":"remote","op":"deletedir","id":remotedir.id,"name":remotedir.name,"parent":remotedir_id});
+        }       
+        recorrido_remoto(synctipo,sync_folder,path+"/"+remotedir.name,remotepath+"/"+remotedir.name,remotedir.id,-1,[],remotedir.subdirs,remote_operations,operations,dirmatch_table_local,dirmatch_table_remote);
+      }
     }
   });
 }
@@ -904,7 +939,7 @@ function actualizar_local_con_peticiones_pendientes(sync_folder,localrootpath,lo
         {
           var op=JSON.parse(localStorage.getItem(key));
           /*ops.push(op);*/
-          var localrootpath=get_sync_path(sync_folder);
+          var localrootpath=get_sync_data(sync_folder).path;
           //let path=get_local_path_from_remote_id(localrootpath,op.dir)+"/"+op.name;          
           /*var newfile={origin:"pending_transactions",id:op.id,dir:op.dir,name:op.name,size:op.size,type:op.type};
           remotefiles.push(newfile);*/
@@ -961,11 +996,11 @@ function obtener_operaciones_persistentes(sync_folder)
     return ops;
 }
 
-function add_sync(user,dir,folder)
+function add_sync(user,dir,folder,tipo)
 {
           localStorage.removeItem("sync_"+dir+"_"+user);
           localStorage.removeItem("last_update_date"+dir+"_"+user);
-          localStorage.setItem("sync_"+dir+"_"+user, JSON.stringify({"user":user,"dir":dir, "path":folder}));
+          localStorage.setItem("sync_"+dir+"_"+user, JSON.stringify({"user":user,"dir":dir, "path":folder,"tipo":tipo}));
 
           parar_y_recargar_syncs(function(){
 
@@ -1340,7 +1375,9 @@ function receiveMessage(event)
   //***************************************************************************************************
   else if(data.id=="remote_sync_result")
   {
-    var path=get_sync_path(data.dir);
+    var dirdata=get_sync_data(data.dir);
+    var path=dirdata.path;
+    var synctipo=dirdata.tipo;
     path=path.replaceAll("\\","/");
     var transaction_queue=data.transaction_queue;
 
@@ -1348,284 +1385,457 @@ function receiveMessage(event)
     /*var ops=obtener_operaciones_persistentes(data.dir);
     do_run_operations(data.dir,ops);*/
     
+    if(synctipo=="default")
+    {
+
     
 
-    check_syncs_local(path,data.dir,function (localfiles,localdirs){
-        var operations=[];
-        var remote_operations=data.ops;
+      check_syncs_local(path,data.dir,function (localfiles,localdirs){
+          var operations=[];
+          var remote_operations=data.ops;
 
-       /* //quitar de remote_operations las que hemos ejecutado nosotros
-        //no se si esto es conveniente una vez añada control de operaciones pendientes
-        var new_remote_operations=[];
-        for(i=0;i<remote_operations.length;i++)
-        {
-          if(!es_nuestra_operacion(remote_operations[i],g_previously_run_operations))
+        /* //quitar de remote_operations las que hemos ejecutado nosotros
+          //no se si esto es conveniente una vez añada control de operaciones pendientes
+          var new_remote_operations=[];
+          for(i=0;i<remote_operations.length;i++)
           {
-            new_remote_operations.push(remote_operations[i]);
-          }
-        }
-        remote_operations=new_remote_operations;
-        */
-
-
-        clear_pending_transactions(data.dir);
-        
-        
-        
-        //recorrido de ficheros en local
-        //!!incluir ficheros que están siendo descargados
-        //!!excluir ficheros que están en cola para ser borrados? (creo que los borra al instante)
-        [localfiles,localdirs]=actualizar_local_con_peticiones_pendientes(data.dir,path,localfiles,localdirs,transaction_queue);
-
-        //recorrido de ficheros en remoto
-        //!!incluir ficheros que están siendo subidos
-        //!!excluir ficheros que están en cola para ser borrados en remoto
-        //!!modificar ficheros que están en cola para ser movidos o renombrados en remoto
-        [remotefiles,remotedirs]=actualizar_remoto_con_peticiones_pendientes(data.dir,data.files,data.dirs,transaction_queue);
-
-
-        dirmatch_table_local=[];
-        dirmatch_table_remote=[];
-        dirmatch_table_local[localdirs.id]=data.dir;
-        dirmatch_table_remote[data.dir]=localdirs.id;
-        recorrido_local(data.dir,path,data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
-            dirmatch_table_remote);
-        g_remotedir_path_table[data.dir]="";
-        recorrido_remoto(data.dir,path,"",data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
-            dirmatch_table_remote);
-
-        //console.log("remote dirs:"+JSON.stringify(remotedirs));
-        //console.log("remote files:"+JSON.stringify(data.files));
-        //console.log("local dirs:"+JSON.stringify(localdirs));
-        //console.log("local files:"+JSON.stringify(localfiles));
-        //console.log("remote operations:"+JSON.stringify(remote_operations));
-
-        quitar_initializing();//quitar el cartel inicial que tapa todo
-        
-
-        localfiles.forEach(function(file) {      
-          if(typeof file.origin === "undefined" || file.origin=="disk") //significa que es un fichero real en disco
-          {
-          file.remote_dir_id=dir_get_remote_id(dirmatch_table_local,file.dir);    
-          //ver si el fichero existe en remoto
-          var filtered = data.files.filter(function(entry) { return ((entry.name === file.name) && (entry.dir==file.remote_dir_id) ); });
-          if(filtered.length>0)
-          {
-            var item = filtered[0];
-          }
-          else{      //si no existe
-
-            var bMovidoORenombrado=false;
-            var fichero_encontrado=null;
-            //mirar si se ha movido o renombrado
-            var filtered2 = data.files.filter(function(entry) { return (entry.digest === file.hash) });
-            if(filtered2.length>0)
+            if(!es_nuestra_operacion(remote_operations[i],g_previously_run_operations))
             {
-              //mirar si el otro fichero tiene correspondencia local
-              var bHayFicheroMismoHashSinCorrespondencia=false;
-              
-              for(j=0;(!bHayFicheroMismoHashSinCorrespondencia && j<=filtered2.length-1 ) ;j++)
-              {              
-                let item2 = filtered2[j];
-                if(!item2.movido) //ya ha sido movido en una operacion anterior
-                {
-                  let local_dir=dirmatch_table_remote[item2.dir];
-                  let filtered3=[];
-                  if(typeof local_dir!=="undefined") 
-                    filtered3 = localfiles.filter(function(entry) { return ((entry.name === item2.name) && (local_dir==entry.dir) ); });
-                  if(filtered3.length>0)
+              new_remote_operations.push(remote_operations[i]);
+            }
+          }
+          remote_operations=new_remote_operations;
+          */
+
+
+          clear_pending_transactions(data.dir);
+          
+          
+          
+          //recorrido de ficheros en local
+          //!!incluir ficheros que están siendo descargados
+          //!!excluir ficheros que están en cola para ser borrados? (creo que los borra al instante)
+          [localfiles,localdirs]=actualizar_local_con_peticiones_pendientes(data.dir,path,localfiles,localdirs,transaction_queue);
+
+          //recorrido de ficheros en remoto
+          //!!incluir ficheros que están siendo subidos
+          //!!excluir ficheros que están en cola para ser borrados en remoto
+          //!!modificar ficheros que están en cola para ser movidos o renombrados en remoto
+          [remotefiles,remotedirs]=actualizar_remoto_con_peticiones_pendientes(data.dir,data.files,data.dirs,transaction_queue);
+
+
+          dirmatch_table_local=[];
+          dirmatch_table_remote=[];
+          dirmatch_table_local[localdirs.id]=data.dir;
+          dirmatch_table_remote[data.dir]=localdirs.id;
+          recorrido_local(synctipo,data.dir,path,data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+              dirmatch_table_remote);
+          g_remotedir_path_table[data.dir]="";
+          recorrido_remoto(synctipo,data.dir,path,"",data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+              dirmatch_table_remote);
+
+          //console.log("remote dirs:"+JSON.stringify(remotedirs));
+          //console.log("remote files:"+JSON.stringify(data.files));
+          //console.log("local dirs:"+JSON.stringify(localdirs));
+          //console.log("local files:"+JSON.stringify(localfiles));
+          //console.log("remote operations:"+JSON.stringify(remote_operations));
+
+          quitar_initializing();//quitar el cartel inicial que tapa todo
+          
+
+          localfiles.forEach(function(file) {      
+            if(typeof file.origin === "undefined" || file.origin=="disk") //significa que es un fichero real en disco
+            {
+            file.remote_dir_id=dir_get_remote_id(dirmatch_table_local,file.dir);    
+            //ver si el fichero existe en remoto
+            var filtered = data.files.filter(function(entry) { return ((entry.name === file.name) && (entry.dir==file.remote_dir_id) ); });
+            if(filtered.length>0)
+            {
+              var item = filtered[0];
+            }
+            else{      //si no existe
+
+              var bMovidoORenombrado=false;
+              var fichero_encontrado=null;
+              //mirar si se ha movido o renombrado
+              var filtered2 = data.files.filter(function(entry) { return (entry.digest === file.hash) });
+              if(filtered2.length>0)
+              {
+                //mirar si el otro fichero tiene correspondencia local
+                var bHayFicheroMismoHashSinCorrespondencia=false;
+                
+                for(j=0;(!bHayFicheroMismoHashSinCorrespondencia && j<=filtered2.length-1 ) ;j++)
+                {              
+                  let item2 = filtered2[j];
+                  if(!item2.movido) //ya ha sido movido en una operacion anterior
                   {
-                    //tiene correspondencia, por lo tanto no es movido
-                  
+                    let local_dir=dirmatch_table_remote[item2.dir];
+                    let filtered3=[];
+                    if(typeof local_dir!=="undefined") 
+                      filtered3 = localfiles.filter(function(entry) { return ((entry.name === item2.name) && (local_dir==entry.dir) ); });
+                    if(filtered3.length>0)
+                    {
+                      //tiene correspondencia, por lo tanto no es movido
+                    
+                    }
+                    else
+                    {
+                      bHayFicheroMismoHashSinCorrespondencia=true;
+                      fichero_encontrado=item2;
+                      fichero_encontrado.movido=true;
+                    }
+                  }
+                }
+                if(bHayFicheroMismoHashSinCorrespondencia)
+                {
+                  bMovidoORenombrado=true;                
+                }
+              }
+
+              if(bMovidoORenombrado)
+              {
+                //mover y renombrar
+                let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
+                if(typeof remotedir === "undefined")
+                  remotedir=-1;
+                //if(remotedir>=0)
+                {
+                  if(remotedir>=0 && check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"dir":remotedir  }))
+                  {
+                    let newpath=get_local_path_from_remote_id(path,fichero_encontrado.dir)+"/"+fichero_encontrado.name;
+                    //if(typeof local_dir !== "undefined")
+                    {
+                      var opid=push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"movefile",
+                                                        "name":file.name,"path":file.path,"filetype":file.type,
+                                                        "filesize":file.size,
+                                                        "newname":fichero_encontrado.name,"newpath":newpath});
+                      file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                      fichero_encontrado.opid=opid;                                                      
+                    }
+                    /*else
+                    {
+                      console.log("Moving to unexistent local directory");
+                    }*/
                   }
                   else
                   {
-                    bHayFicheroMismoHashSinCorrespondencia=true;
-                    fichero_encontrado=item2;
-                    fichero_encontrado.movido=true;
-                  }
-                }
-              }
-              if(bHayFicheroMismoHashSinCorrespondencia)
-              {
-                bMovidoORenombrado=true;                
-              }
-            }
-
-            if(bMovidoORenombrado)
-            {
-              //mover y renombrar
-              let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
-              if(typeof remotedir === "undefined")
-                remotedir=-1;
-              //if(remotedir>=0)
-              {
-                if(remotedir>=0 && check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"dir":remotedir  }))
-                {
-                  let newpath=get_local_path_from_remote_id(path,fichero_encontrado.dir)+"/"+fichero_encontrado.name;
-                  //if(typeof local_dir !== "undefined")
-                  {
-                    var opid=push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"movefile",
-                                                      "name":file.name,"path":file.path,"filetype":file.type,
-                                                      "filesize":file.size,
-                                                      "newname":fichero_encontrado.name,"newpath":newpath});
-                    file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
-                    fichero_encontrado.opid=opid;                                                      
-                  }
-                  /*else
-                  {
-                    console.log("Moving to unexistent local directory");
-                  }*/
-                }
-                else
-                {
-                  var opid;
-                  if(fichero_encontrado.dir==remotedir)
-                  {
-                    if(check_remote_operations(remote_operations,{"typecode":"file_rename","id":fichero_encontrado.id,
-                                                            "newname":fichero_encontrado.name}))
+                    var opid;
+                    if(fichero_encontrado.dir==remotedir)
                     {
-                      let newpath=get_local_path_from_remote_id(path,remotedir)+"/"+fichero_encontrado.name;
-                      //let local_dir=dirmatch_table_remote[fichero_encontrado.dir];
-                      //if(typeof local_dir !== "undefined")
+                      if(check_remote_operations(remote_operations,{"typecode":"file_rename","id":fichero_encontrado.id,
+                                                              "newname":fichero_encontrado.name}))
                       {
-                        //var newpath=get_local_path_from_local_id(localdirs,local_dir)+"/"+fichero_encontrado.name;
-                        var opid=push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"movefile",
-                                                      "name":file.name,"path":file.path,"filetype":file.type,
-                                                      "newname":fichero_encontrado.name,"newpath":newpath});
+                        let newpath=get_local_path_from_remote_id(path,remotedir)+"/"+fichero_encontrado.name;
+                        //let local_dir=dirmatch_table_remote[fichero_encontrado.dir];
+                        //if(typeof local_dir !== "undefined")
+                        {
+                          //var newpath=get_local_path_from_local_id(localdirs,local_dir)+"/"+fichero_encontrado.name;
+                          var opid=push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"movefile",
+                                                        "name":file.name,"path":file.path,"filetype":file.type,
+                                                        "newname":fichero_encontrado.name,"newpath":newpath});
+                          file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                          fichero_encontrado.opid=opid;
+                        }
+                        /*else
+                        {
+                          console.log("Moving to unexistent local directory");
+                        }*/
+                      }
+                      else if(remotedir>=0)
+                      {
+                        //renombrar remoto
+                        opid=push_operation(operations,{"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
+                                                      "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
+                                                      "filetype":file.type,"filesize":file.size,
+                                                      "localdir":file.dir,"newname":file.name,"newdir":remotedir});
                         file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
                         fichero_encontrado.opid=opid;
                       }
-                      /*else
-                      {
-                        console.log("Moving to unexistent local directory");
-                      }*/
                     }
-                    else if(remotedir>=0)
+                    else 
                     {
-                      //renombrar remoto
-                      opid=push_operation(operations,{"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
-                                                    "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
-                                                    "filetype":file.type,"filesize":file.size,
-                                                    "localdir":file.dir,"newname":file.name,"newdir":remotedir});
+                      //mover remoto
+                      opid=push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
+                                                      "filesize":file.size,"filetype":file.type,
+                                                      "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
+                                                      "localdir":file.dir,"newname":file.name,"newdir":remotedir});
                       file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
                       fichero_encontrado.opid=opid;
                     }
                   }
-                  else 
+                }
+              }
+              else
+              {
+                let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
+                if(typeof remotedir === "undefined")
+                  remotedir=-1;
+                //si no es movido o renombrado
+                if(check_remote_operations(remote_operations,{"typecode":"delete_file","auxname":file.name,"auxid":remotedir}) ||
+                  (check_remote_operations(remote_operations,{"typecode":"delete_file","auxname":file.name,"auxid":"*"}) &&
+                  check_remote_operations(remote_operations,{"typecode":"delete_dir","auxname":"*","auxid":remotedir}))
+                  || check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"dir":"*"}) )
+                {
+                  push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"deletefile","name":file.name,"type":file.type,"size":file.size,"path":file.path,"dir":file.dir});
+                }
+                else
+                {
+                  push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":file.path,"size":file.size,"filetype":file.type,"dir":remotedir});
+                }
+              }
+            }
+            }
+          });
+
+          
+          remotefiles.forEach(function(file) {          
+            var filtered = localfiles.filter(function(entry) { return ((entry.name === file.name) && (entry.remote_dir_id==file.dir)  ); });
+            if(filtered.length>0)
+            {
+              var item = filtered[0];//!!hay que hacer bucle porque puede que haya mas de uno 
+              if( item.hash!=file.digest && (item.origin=="disk" || typeof item.origin ==="undefined"))
+              {
+                let path2=get_local_path_from_remote_id(path,file.dir);
+                if(check_remote_operations(remote_operations,{"typecode":"upload","auxname":file.name,"auxid":file.dir}))
+                {
+                    push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
+                      "tipo":file.tipo,"path":path2,"dir":file.dir});
+                }
+                else
+                {
+                    push_operation(operations,
+                      {"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":path2+"/"+file.name,"filetype":item.type,"dir":file.dir,"size":item.size});
+                    
+                }
+              }
+              else if( item.origin!="disk" && typeof item.origin !=="undefined")
+              {
+                  let path2=get_local_path_from_remote_id(path,file.dir);
+                  //si es un fichero que estaba en descarga volvemos a dar la señal de descarga
+                  push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
+                      "tipo":file.tipo,"path":path2,"dir":file.dir});
+              }
+              
+            }
+            else{      
+              //comprobar si se ha renombrado o movido
+
+              if(typeof file.opid === "undefined")//si no hay una operacion ya asociada
+              {
+                //si es nuevo fichero subido
+                //!!falta añadir el ccheck_remote_operations para cuando se mueve desde una carpeta no sincronizada a una sincronizada
+                if(file.origin=="pending_transactions" || check_remote_operations(remote_operations,{"typecode":"upload","auxname":file.name,"auxid":file.dir})
+                  || check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"newdir":file.dir})
+                  )
+                {
+                  //!!puedo sacar el path local de otra forma y entonces funcionará
+                  //let local_dir=dirmatch_table_remote[file.dir];
+                  //if(typeof local_dir !== "undefined")
                   {
-                    //mover remoto
-                    opid=push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
-                                                    "filesize":file.size,"filetype":file.type,
-                                                    "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
-                                                    "localdir":file.dir,"newname":file.name,"newdir":remotedir});
-                    file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
-                    fichero_encontrado.opid=opid;
+                    //let path2=get_local_path_from_local_id(localdirs,local_dir);
+                    let path2=get_local_path_from_remote_id(path,file.dir);
+                    push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
+                      "tipo":file.tipo,"path":path2,"dir":file.dir});
+                  }
+                  /*else
+                  {
+                    console.log("Trying to write to inexistent path");
+                  }*/
+                }
+                //si es antiguo fichero que se ha borrado en local
+                else
+                { 
+                  //let dir=dir_get_remote_id(dirmatch_table_local,file.dir);
+                  push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"deletefile","name":file.name,"filesize":file.size,
+                    "filetype":file.tipo,"dir":file.dir});
+                }
+              }
+            }
+          });
+
+          cancel_current_operation_if_needed(data.dir,operations);
+          run_operations(data.dir,operations);
+
+          document.getElementById('targetFrame').contentWindow.check_transactions_queue();
+          document.getElementById('targetFrame').contentWindow.display_transactions();
+
+          //if(nrunned==0)
+          {
+            g_last_update_date[data.dir]=data.date;
+            localStorage.setItem("last_update_date"+data.dir+"_"+g_user, g_last_update_date[data.dir]);
+          }
+          
+      });    
+    }
+    else if(synctipo=="local-master")
+    {
+
+      check_syncs_local(path,data.dir,function (localfiles,localdirs){
+          var operations=[];
+          var remote_operations=data.ops;
+
+          clear_pending_transactions(data.dir);
+          
+          [localfiles,localdirs]=actualizar_local_con_peticiones_pendientes(data.dir,path,localfiles,localdirs,transaction_queue);
+
+          [remotefiles,remotedirs]=actualizar_remoto_con_peticiones_pendientes(data.dir,data.files,data.dirs,transaction_queue);
+
+          dirmatch_table_local=[];
+          dirmatch_table_remote=[];
+          dirmatch_table_local[localdirs.id]=data.dir;
+          dirmatch_table_remote[data.dir]=localdirs.id;
+          recorrido_local(synctipo,data.dir,path,data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+              dirmatch_table_remote);
+          g_remotedir_path_table[data.dir]="";
+          recorrido_remoto(synctipo,data.dir,path,"",data.dir,localdirs.id,localdirs.subdirs,remotedirs,remote_operations,operations,dirmatch_table_local,
+              dirmatch_table_remote);
+
+          quitar_initializing();//quitar el cartel inicial que tapa todo
+          
+
+          localfiles.forEach(function(file) {      
+            if(typeof file.origin === "undefined" || file.origin=="disk") //significa que es un fichero real en disco
+            {
+              file.remote_dir_id=dir_get_remote_id(dirmatch_table_local,file.dir);    
+              //ver si el fichero existe en remoto
+              var filtered = data.files.filter(function(entry) { return ((entry.name === file.name) && (entry.dir==file.remote_dir_id) ); });
+              if(filtered.length>0)
+              {
+                var item = filtered[0];
+              }
+              else{      //si no existe
+
+                var bMovidoORenombrado=false;
+                var fichero_encontrado=null;
+                //mirar si se ha movido o renombrado
+                var filtered2 = data.files.filter(function(entry) { return (entry.digest === file.hash) });
+                if(filtered2.length>0)
+                {
+                  //mirar si el otro fichero tiene correspondencia local
+                  var bHayFicheroMismoHashSinCorrespondencia=false;
+                  
+                  for(j=0;(!bHayFicheroMismoHashSinCorrespondencia && j<=filtered2.length-1 ) ;j++)
+                  {              
+                    let item2 = filtered2[j];
+                    if(!item2.movido) //ya ha sido movido en una operacion anterior
+                    {
+                      let local_dir=dirmatch_table_remote[item2.dir];
+                      let filtered3=[];
+                      if(typeof local_dir!=="undefined") 
+                        filtered3 = localfiles.filter(function(entry) { return ((entry.name === item2.name) && (local_dir==entry.dir) ); });
+                      if(filtered3.length>0)
+                      {
+                        //tiene correspondencia, por lo tanto no es movido
+                      
+                      }
+                      else
+                      {
+                        bHayFicheroMismoHashSinCorrespondencia=true;
+                        fichero_encontrado=item2;
+                        fichero_encontrado.movido=true;
+                      }
+                    }
+                  }
+                  if(bHayFicheroMismoHashSinCorrespondencia)
+                  {
+                    bMovidoORenombrado=true;                
+                  }
+                }
+
+                if(bMovidoORenombrado)
+                {
+                  //mover y renombrar
+                  let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
+                  if(typeof remotedir === "undefined")
+                    remotedir=-1;
+                  //if(remotedir>=0)
+                  {
+                    {
+                      var opid;
+                      if(fichero_encontrado.dir==remotedir)
+                      {
+                          //renombrar remoto
+                          opid=push_operation(operations,{"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
+                                                        "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
+                                                        "filetype":file.type,"filesize":file.size,
+                                                        "localdir":file.dir,"newname":file.name,"newdir":remotedir});
+                          file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                          fichero_encontrado.opid=opid;
+                      }
+                      else 
+                      {
+                        //mover remoto
+                        opid=push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"movefile","name":fichero_encontrado.name,"path":file.path,
+                                                        "filesize":file.size,"filetype":file.type,
+                                                        "dir":fichero_encontrado.dir,"id":fichero_encontrado.id,
+                                                        "localdir":file.dir,"newname":file.name,"newdir":remotedir});
+                        file.opid=opid; //marcar fichero indicando que ya se le ha aplicado una operacion
+                        fichero_encontrado.opid=opid;
+                      }
+                    }
+                  }
+                }
+                else
+                {
+                  let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
+                  if(typeof remotedir === "undefined")
+                    remotedir=-1;
+                  //si no es movido o renombrado
+                  {
+                    push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":file.path,"size":file.size,"filetype":file.type,"dir":remotedir});
                   }
                 }
               }
             }
-            else
-            {
-              let remotedir=dir_get_remote_id(dirmatch_table_local,file.dir);
-              if(typeof remotedir === "undefined")
-                remotedir=-1;
-              //si no es movido o renombrado
-              if(check_remote_operations(remote_operations,{"typecode":"delete_file","auxname":file.name,"auxid":remotedir}) ||
-                (check_remote_operations(remote_operations,{"typecode":"delete_file","auxname":file.name,"auxid":"*"}) &&
-                 check_remote_operations(remote_operations,{"typecode":"delete_dir","auxname":"*","auxid":remotedir}))
-                 || check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"dir":"*"}) )
-              {
-                push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"deletefile","name":file.name,"type":file.type,"size":file.size,"path":file.path,"dir":file.dir});
-              }
-              else
-              {
-                push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":file.path,"size":file.size,"filetype":file.type,"dir":remotedir});
-              }
-            }
-          }
-          }
-        });
+          });
 
-        
-        remotefiles.forEach(function(file) {          
-          var filtered = localfiles.filter(function(entry) { return ((entry.name === file.name) && (entry.remote_dir_id==file.dir)  ); });
-          if(filtered.length>0)
-          {
-            var item = filtered[0];//!!hay que hacer bucle porque puede que haya mas de uno 
-            if( item.hash!=file.digest && (item.origin=="disk" || typeof item.origin ==="undefined"))
+          
+          remotefiles.forEach(function(file) {          
+            var filtered = localfiles.filter(function(entry) { return ((entry.name === file.name) && (entry.remote_dir_id==file.dir)  ); });
+            if(filtered.length>0)
             {
-              let path2=get_local_path_from_remote_id(path,file.dir);
-              if(check_remote_operations(remote_operations,{"typecode":"upload","auxname":file.name,"auxid":file.dir}))
+              var item = filtered[0];//!!hay que hacer bucle porque puede que haya mas de uno 
+              if( item.hash!=file.digest && (item.origin=="disk" || typeof item.origin ==="undefined"))
               {
-                  push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
-                    "tipo":file.tipo,"path":path2,"dir":file.dir});
-              }
-              else
-              {
-                  push_operation(operations,
-                    {"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":path2+"/"+file.name,"filetype":item.type,"dir":file.dir,"size":item.size});
-                  
-              }
-            }
-            else if( item.origin!="disk" && typeof item.origin !=="undefined")
-            {
                 let path2=get_local_path_from_remote_id(path,file.dir);
-                //si es un fichero que estaba en descarga volvemos a dar la señal de descarga
-                push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
-                    "tipo":file.tipo,"path":path2,"dir":file.dir});
-            }
-            
-          }
-          else{      
-            //comprobar si se ha renombrado o movido
-
-            if(typeof file.opid === "undefined")//si no hay una operacion ya asociada
-            {
-              //si es nuevo fichero subido
-              //!!falta añadir el ccheck_remote_operations para cuando se mueve desde una carpeta no sincronizada a una sincronizada
-              if(file.origin=="pending_transactions" || check_remote_operations(remote_operations,{"typecode":"upload","auxname":file.name,"auxid":file.dir})
-                || check_remote_operations(remote_operations,{"typecode":"movefile","name":file.name,"newdir":file.dir})
-                )
-              {
-                //!!puedo sacar el path local de otra forma y entonces funcionará
-                //let local_dir=dirmatch_table_remote[file.dir];
-                //if(typeof local_dir !== "undefined")
                 {
-                  //let path2=get_local_path_from_local_id(localdirs,local_dir);
-                  let path2=get_local_path_from_remote_id(path,file.dir);
-                  push_operation(operations,{"sync_folder":data.dir,"type":"local","op":"download","name":file.name,"id":file.id,"size":file.size,
-                    "tipo":file.tipo,"path":path2,"dir":file.dir});
+                    push_operation(operations,
+                      {"sync_folder":data.dir,"type":"remote","op":"upload","name":file.name,"path":path2+"/"+file.name,"filetype":item.type,"dir":file.dir,"size":item.size});
+                    
                 }
-                /*else
-                {
-                  console.log("Trying to write to inexistent path");
-                }*/
               }
-              //si es antiguo fichero que se ha borrado en local
-              else
-              { 
-                //let dir=dir_get_remote_id(dirmatch_table_local,file.dir);
-                push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"deletefile","name":file.name,"filesize":file.size,
-                  "filetype":file.tipo,"dir":file.dir});
+              else if( item.origin!="disk" && typeof item.origin !=="undefined")
+              {}
+              
+            }
+            else{      
+              //comprobar si se ha renombrado o movido
+
+              if(typeof file.opid === "undefined")//si no hay una operacion ya asociada
+              {
+                //si es nuevo fichero subido
+                { 
+                  push_operation(operations,{"sync_folder":data.dir,"type":"remote","op":"deletefile","name":file.name,"filesize":file.size,
+                    "filetype":file.tipo,"dir":file.dir});
+                }
               }
             }
+          });
+
+          cancel_current_operation_if_needed(data.dir,operations);
+          run_operations(data.dir,operations);
+
+          document.getElementById('targetFrame').contentWindow.check_transactions_queue();
+          document.getElementById('targetFrame').contentWindow.display_transactions();
+
+          //if(nrunned==0)
+          {
+            g_last_update_date[data.dir]=data.date;
+            localStorage.setItem("last_update_date"+data.dir+"_"+g_user, g_last_update_date[data.dir]);
           }
-        });
-
-        cancel_current_operation_if_needed(data.dir,operations);
-        run_operations(data.dir,operations);
-
-        document.getElementById('targetFrame').contentWindow.check_transactions_queue();
-        document.getElementById('targetFrame').contentWindow.display_transactions();
-
-        //if(nrunned==0)
-        {
-          g_last_update_date[data.dir]=data.date;
-          localStorage.setItem("last_update_date"+data.dir+"_"+g_user, g_last_update_date[data.dir]);
-        }
-        
-    });    
+          
+      });          
+    }
   }
   //***************************************************************************************************
   //***************************************************************************************************
@@ -1735,7 +1945,7 @@ function receiveMessage(event)
           SetWindowsFolderInWindows10Explorer(folder,'HKCU\\SOFTWARE\\Classes\\Wow6432Node\\CLSID\\{91221D5C-169C-4AC2-9226-23FD9DB84310}');
         //});
         //
-        add_sync(g_user,data.public_dir,folder)
+        add_sync(g_user,data.public_dir,folder,"default")
       }
     }
     if(typeof g_client_id==="undefined" || g_client_id==null || g_client_id=="")
@@ -1776,7 +1986,7 @@ function receiveMessage(event)
           try
           {
             fs.symlinkSync(folder,sl,"junction");
-            add_sync(g_user,data.public_dir,folder);
+            add_sync(g_user,data.public_dir,folder,"default");
           }
           catch(e)
           {
@@ -1856,7 +2066,7 @@ function receiveMessage(event)
       }
       if(b)
       {
-          add_sync(g_user,data.dir,folder);
+          add_sync(g_user,data.dir,folder,data.tipo);
           
       }
       //new_sync_folder(data.dir,folder);
@@ -1940,7 +2150,8 @@ var g_pending_operations=[];
 
 function run_operations(sync_folder,operations)
 {
-  var localrootpath=get_sync_path(sync_folder);
+  var syncdata=get_sync_data(sync_folder);
+  var localrootpath=syncdata.path;
 
   var ordered_operations=operations.slice();
   ordered_operations.sort(function (a,b){
@@ -2053,7 +2264,7 @@ function run_operations(sync_folder,operations)
 
   ordered_operations.reverse(); 
 
-  var nrunned=do_run_operations(sync_folder,ordered_operations);
+  var nrunned=do_run_operations(syncdata.tipo,sync_folder,ordered_operations);
   //g_previously_run_operations=ordered_operations;
   
   return nrunned;
@@ -2161,7 +2372,7 @@ function possible_notification(title,desc)
         silent: true // We'll play our own sound
       })*/
       appIcon.displayBalloon({
-                    
+                    icon: imageFolder + '/64x64.png',
                     title:title,
                     content: message
                     }); 
@@ -2179,7 +2390,7 @@ function possible_notification(title,desc)
 //contiene: id remoto
 var g_directorios_creados=[]; //para guardar id remoto de directorios recien creados. se usará al crear ficheros en ese directorio
 
-function do_run_operations(sync_folder,operations)
+function do_run_operations(sync_tipo,sync_folder,operations)
 {
   /*if(g_running_remote_operations)
     return;*/
@@ -2221,7 +2432,7 @@ function do_run_operations(sync_folder,operations)
 
                   if(errcode=="Permission denied")
                   {
-                    var localrootpath=get_sync_path(sync_folder);
+                    var localrootpath=get_sync_data(sync_folder).path;
                     let path0=get_local_path_from_remote_id(localrootpath,op.parent);
                     let path=path0+"/"+op.name;
                     var hpath=path0+"/.__oficloud";
@@ -2298,7 +2509,7 @@ function do_run_operations(sync_folder,operations)
                   var err=error_list[i];
                   if(err.error=="Permission denied")
                   {
-                    var localrootpath=get_sync_path(sync_folder);
+                    var localrootpath=get_sync_data(sync_folder).path;
                     let path=get_local_path_from_remote_id(localrootpath,op.parent);
                     var hpath=path+"/.__oficloud";
                     var fname=op.name+".txt";
@@ -2364,7 +2575,7 @@ function do_run_operations(sync_folder,operations)
                 //console.log(params.message);
                 if(params.message=="Permission denied")
                 {
-                  var localrootpath=get_sync_path(sync_folder);
+                  var localrootpath=get_sync_data(sync_folder).path;
                   let path=get_local_path_from_remote_id(localrootpath,op.dir);
                   var hpath=path+"/.__oficloud";
                   var fname=op.name+".txt";
@@ -2471,15 +2682,18 @@ function do_run_operations(sync_folder,operations)
                   var err=error_list[i];
                   if(err.error=="Permission denied")
                   {
-                    var localrootpath=get_sync_path(sync_folder);
+                    var localrootpath=get_sync_data(sync_folder).path;
                     let path=get_local_path_from_remote_id(localrootpath,op.dir);
                     var hpath=path+"/.__oficloud";
                     var fname=op.name+".txt";
                     save_in_aux_log(hpath,fname,"("+get_date()+") Could not delete file: permission denied");
 
-                    var newop= {"sync_folder":sync_folder,"type":"local","op":"download","name":op.name,"id":op.id,"size":-1,
-                      "tipo":"","path":op.path,"dir":op.dir};                    
-                    guardar_operacion_persistente(sync_folder,newop);
+                    if(sync_tipo=="default")
+                    {
+                      var newop= {"sync_folder":sync_folder,"type":"local","op":"download","name":op.name,"id":op.id,"size":-1,
+                        "tipo":"","path":op.path,"dir":op.dir};                    
+                      guardar_operacion_persistente(sync_folder,newop);
+                    }
                   }
                   else if(err.error=="File doesn't exist")
                   {
@@ -2602,7 +2816,7 @@ function do_run_operations(sync_folder,operations)
                     }
                     if(b)
                     {
-                          var localrootpath=get_sync_path(sync_folder);
+                          var localrootpath=get_sync_data(sync_folder).path;
                           let path=get_local_path_from_remote_id(localrootpath,op.dir);
                           var hpath=path+"/.__oficloud";
                           var fname=op.name+".txt";
@@ -2636,7 +2850,7 @@ function do_run_operations(sync_folder,operations)
 
                     if(params.e=="Permission denied")
                     {
-                          var localrootpath=get_sync_path(sync_folder);
+                          var localrootpath=get_sync_data(sync_folder).path;
                           let path=get_local_path_from_remote_id(localrootpath,op.dir);
                           var hpath=path+"/.__oficloud";
                           var fname=op.name+".txt";
@@ -2799,7 +3013,7 @@ function my_transactions_callback(event_id,aux_id1)
       else
       {
         appIcon.displayBalloon({
-                    
+                    icon: imageFolder + '/64x64.png',
                     title:"Oficloud Sync status",
                     content: "Folder synced"
                     }); 
@@ -2844,12 +3058,12 @@ function load_syncs_from_storage(user)
 
 var files=[];
 
-function get_sync_path(dir)
+function get_sync_data(dir)
 {
   for(var i=0;i<syncs.length;i++)
   {
     if(syncs[i].dir==dir)
-      return syncs[i].path;
+      return syncs[i];
   }
   return "";
 }
@@ -3947,23 +4161,23 @@ function random_string(l)
     {
         
           var w=fs.watch(path, { persistent: true,recursive: true }, function (event, fileName) {
-          if(event=="change")
-          {
-            //console.log("=========> Event: " + event +" " + fileName);
-            if(fileName!=null)
+            if(event=="change")
             {
-              fileName=path + '/' + fileName;
-              fileName = fileName.replace(/\\/g, '/');
-              if (!fs.statSync(fileName).isDirectory()) {
-                delete_file_from_previous_filelist(fileName,dir);              
+              //console.log("=========> Event: " + event +" " + fileName);
+              if(fileName!=null)
+              {
+                fileName=path + '/' + fileName;
+                fileName = fileName.replace(/\\/g, '/');
+                if (!fs.statSync(fileName).isDirectory()) {
+                  delete_file_from_previous_filelist(fileName,dir);              
+                }
               }
             }
-          }
-          else
-          {
-            //console.log("Event: " + event +" " + fileName);
-          }
-          prestart_sync(dir);
+            else
+            {
+              //console.log("Event: " + event +" " + fileName);
+            }
+            prestart_sync(dir);
         });
         watches[dir]=w;
 

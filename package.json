@@ -2,7 +2,7 @@
   "name": "Oficloud",
   "homepage": "https://www.oficloud.com",
   "description": "Oficloud Sync software",
-  "version": "0.9.5",
+  "version": "1.0.2",
   "main": "main.js",
   "icon": "256x256 app icon.png",
   "author": {

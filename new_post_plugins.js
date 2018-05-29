@@ -18,7 +18,7 @@ module.exports = {
         else
         {
             appIcon.displayBalloon({
-                        
+                        icon: imageFolder + '/64x64.png',
                         title:"Oficloud Message",
                         content: msg.decrypted_header
                         }); 
